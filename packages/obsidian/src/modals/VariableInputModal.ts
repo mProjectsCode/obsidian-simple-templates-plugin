@@ -12,6 +12,7 @@ import type { Setting } from 'obsidian';
  */
 export class VariableInputModal extends Modal {
 	private readonly values: ResolvedVariables = {};
+	private readonly inputNames: string[];
 	private resolve: (values: ResolvedVariables | null) => void = () => undefined;
 	private submitted = false;
 	private errorEl: HTMLElement | null = null;
@@ -30,9 +31,8 @@ export class VariableInputModal extends Modal {
 		initialValues: ResolvedVariables = {},
 	) {
 		super(app);
+		this.inputNames = variablesNeedingInput(definitions);
 
-		// Seed with the pre-filled initial values, then apply defaults for any
-		// variable that still has no value.
 		Object.assign(this.values, structuredClone(initialValues));
 		for (let [name, definition] of Object.entries(definitions))
 			if (!(name in this.values) && definition.default !== undefined) this.values[name] = structuredClone(definition.default);
@@ -44,10 +44,10 @@ export class VariableInputModal extends Modal {
 	 * resolves immediately with an empty object.
 	 */
 	collect(): Promise<ResolvedVariables | null> {
-		if (variablesNeedingInput(this.definitions).length === 0) return Promise.resolve({});
-		this.open();
+		if (this.inputNames.length === 0) return Promise.resolve({});
 		return new Promise(resolve => {
 			this.resolve = resolve;
+			this.open();
 		});
 	}
 
@@ -56,14 +56,12 @@ export class VariableInputModal extends Modal {
 
 		let inputGroup = new SettingGroup(this.contentEl);
 
-		// Render one input per variable that needs user input
-		for (let name of variablesNeedingInput(this.definitions)) {
+		for (let name of this.inputNames) {
 			inputGroup.addSetting(setting => this.addVariable(setting, name, this.definitions[name]));
 		}
 
 		this.errorEl = this.contentEl.createDiv({ cls: 'mod-warning' });
 
-		// Action buttons
 		new SettingGroup(this.contentEl).addSetting(setting => {
 			setting
 				.addButton(button => button.setButtonText('Cancel').onClick(() => this.close()))
@@ -118,14 +116,11 @@ export class VariableInputModal extends Modal {
 
 	/** Validates required fields and resolves the promise. */
 	private submit(): void {
-		let missing = Object.entries(this.definitions)
-			.filter(
-				([name, definition]) =>
-					definition.required &&
-					variablesNeedingInput(this.definitions).includes(name) &&
-					(this.values[name] === undefined || this.values[name] === ''),
-			)
-			.map(([name, definition]) => definition.label ?? name);
+		let missing = this.inputNames.flatMap(name => {
+			let definition = this.definitions[name];
+			let value = this.values[name];
+			return definition?.required && (value === undefined || value === '') ? [definition.label ?? name] : [];
+		});
 
 		if (missing.length > 0) {
 			this.errorEl?.setText(`Required: ${missing.join(', ')}.`);

@@ -15,34 +15,6 @@ export const VARIABLE_TYPES = [
 	'special',
 ] as const satisfies readonly VariableType[];
 
-/** Sources from which a "special" variable can pull its value at runtime. */
-export type SpecialVariableSource =
-	| 'activeFile.path'
-	| 'activeFile.basename'
-	| 'activeFile.folder'
-	| 'activeFile.frontmatter'
-	| 'activeFile.content'
-	| 'cursor.line'
-	| 'cursor.ch'
-	| 'editor.selection'
-	| 'date.today'
-	| 'date.now'
-	| 'clipboard';
-
-export const SPECIAL_VARIABLE_SOURCES = [
-	'activeFile.path',
-	'activeFile.basename',
-	'activeFile.folder',
-	'activeFile.frontmatter',
-	'activeFile.content',
-	'cursor.line',
-	'cursor.ch',
-	'editor.selection',
-	'date.today',
-	'date.now',
-	'clipboard',
-] as const satisfies readonly SpecialVariableSource[];
-
 /** Declaration of a single template variable. */
 export interface VariableDefinition {
 	label?: string;
@@ -51,7 +23,7 @@ export interface VariableDefinition {
 	required?: boolean;
 	default?: unknown;
 	formula?: string;
-	source?: SpecialVariableSource;
+	source?: string;
 	options?: string[];
 	ask?: boolean;
 }
@@ -102,14 +74,8 @@ export interface TemplateDefinition extends TemplateIdentity {
  * variable-resolution logic.
  */
 export interface ExecutionContext {
-	activeFilePath: string | null;
-	activeFileBasename: string | null;
 	activeFileFolder: string | null;
-	activeFileFrontmatter: Record<string, unknown> | null;
-	activeFileContent?: string;
-	cursor?: { line: number; ch: number } | null;
-	editorSelection?: string;
-	clipboard?: string;
+	[key: string]: unknown;
 }
 
 /** A single problem found during parsing or validation. */

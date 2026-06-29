@@ -1,8 +1,6 @@
 import { FormulaError } from 'packages/core/src/errors';
 import type { ResolvedVariables } from 'packages/core/src/types';
 
-/** ---------- Types ---------- */
-
 /** A successfully parsed formula expression. */
 interface FormulaCall {
 	name: string;
@@ -19,8 +17,6 @@ export interface FormulaRuntime {
 	uuid(): string;
 }
 
-/** ---------- Constants ---------- */
-
 const DEFAULT_RUNTIME: FormulaRuntime = { now: () => new Date(), uuid: () => crypto.randomUUID() };
 
 /** Maps formula name → expected argument count (arity). */
@@ -35,8 +31,6 @@ const FORMULA_ARITY: Record<string, number> = {
 	replace: 3,
 };
 
-/** ---------- Helpers ---------- */
-
 /** Formats a Date as `YYYY-MM-DD`. */
 export function formatLocalDate(date: Date): string {
 	let year = date.getFullYear().toString().padStart(4, '0');
@@ -44,8 +38,6 @@ export function formatLocalDate(date: Date): string {
 	let day = date.getDate().toString().padStart(2, '0');
 	return `${year}-${month}-${day}`;
 }
-
-/** ---------- Argument parsing ---------- */
 
 /**
  * Splits a formula argument string on commas, respecting single and double
@@ -87,8 +79,6 @@ function splitArguments(source: string): string[] {
 	return args;
 }
 
-/** ---------- Parsing ---------- */
-
 /** Parses a formula string like `slug({{title}})` into a structured call. */
 export function parseFormula(source: string): FormulaCall {
 	let match = /^([a-z]+)\s*\(([\s\S]*)\)$/.exec(source.trim());
@@ -124,8 +114,6 @@ export function getFormulaDependencies(source: string): string[] {
 		.map(argument => argument.path.split('.')[0] ?? '');
 }
 
-/** ---------- Evaluation helpers ---------- */
-
 /** Resolves a dot-separated path against a resolved-values map. */
 function lookup(values: ResolvedVariables, path: string): unknown {
 	let cursor: unknown = values;
@@ -145,8 +133,6 @@ function scalar(value: unknown): string {
 	throw new FormulaError('Formula arguments must be scalar values.');
 }
 
-/** ---------- Built-in formula implementations ---------- */
-
 function formulaToday(runtime: FormulaRuntime): string {
 	return formatLocalDate(runtime.now());
 }
@@ -159,7 +145,7 @@ function formulaUuid(runtime: FormulaRuntime): string {
 	return runtime.uuid();
 }
 
-function formulaSlug(value: string): string {
+function formulaSlug(value: unknown): string {
 	return scalar(value)
 		.normalize('NFKD')
 		.replace(/[\u0300-\u036f]/g, '')
@@ -168,8 +154,6 @@ function formulaSlug(value: string): string {
 		.replace(/[^a-z0-9]+/g, '-')
 		.replace(/^-+|-+$/g, '');
 }
-
-/** ---------- Evaluation ---------- */
 
 /**
  * Evaluates a formula source string against the current resolved variable
@@ -190,7 +174,7 @@ export function evaluateFormula(source: string, values: ResolvedVariables, runti
 		case 'uuid':
 			return formulaUuid(runtime);
 		case 'slug':
-			return formulaSlug(args[0] as string);
+			return formulaSlug(args[0]);
 		case 'lower':
 			return scalar(args[0]).toLowerCase();
 		case 'upper':

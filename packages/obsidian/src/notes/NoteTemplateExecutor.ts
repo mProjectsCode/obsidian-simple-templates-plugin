@@ -1,9 +1,11 @@
-import { findAvailablePath, getSpecialValue, joinVaultPath, renderNote } from 'packages/core/src/index';
-import type { ExecutionContext, FileConflictStrategy, TemplateDefinition } from 'packages/core/src/index';
+import { findAvailablePath, joinVaultPath, renderNote } from 'packages/core/src/index';
+import type { FileConflictStrategy, TemplateDefinition } from 'packages/core/src/index';
 import type SimpleTemplatesPlugin from 'packages/obsidian/src/main';
 import { ConfirmModal } from 'packages/obsidian/src/modals/ConfirmModal';
 import { TemplatePickerModal } from 'packages/obsidian/src/modals/TemplatePickerModal';
 import { VariableInputModal } from 'packages/obsidian/src/modals/VariableInputModal';
+import { getRequiredObsidianContext } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
+import type { ObsidianExecutionContext } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
 import { MarkdownView, Notice, TFolder } from 'obsidian';
 
 export class NoteTemplateExecutor {
@@ -38,7 +40,7 @@ export class NoteTemplateExecutor {
 			let initialValues = Object.fromEntries(
 				Object.entries(selected.variables)
 					.filter(([, definition]) => definition.ask === true && definition.source)
-					.map(([name, definition]) => [name, getSpecialValue(definition.source!, context)]),
+					.map(([name, definition]) => [name, this.plugin.specialVariables.resolve(definition.source!, context)]),
 			);
 
 			// ---- Step 4: Prompt for user input ----
@@ -46,7 +48,13 @@ export class NoteTemplateExecutor {
 			if (userValues === null) return;
 
 			// ---- Step 5: Render ----
-			let rendered = renderNote(selected, context, userValues, this.plugin.settings.defaultOutputFolderPath);
+			let rendered = renderNote(
+				selected,
+				this.plugin.specialVariables,
+				context,
+				userValues,
+				this.plugin.settings.defaultOutputFolderPath,
+			);
 			if (rendered.usedFolderFallback) new Notice('No active file was available; using the default output folder.');
 
 			// ---- Step 6: Ensure output folder exists ----
@@ -95,25 +103,19 @@ export class NoteTemplateExecutor {
 		);
 	}
 
-	/** ---------- Context capture ---------- */
-
 	/**
-	 * Gathers the {@link ExecutionContext} from the current Obsidian editor
+	 * Gathers the execution context from the current Obsidian editor
 	 * state.  Only reads expensive sources (file content, clipboard) when the
 	 * template actually needs them.
 	 */
-	private async captureContext(template: TemplateDefinition): Promise<ExecutionContext> {
+	private async captureContext(template: TemplateDefinition): Promise<ObsidianExecutionContext> {
 		let activeFile = this.plugin.app.workspace.getActiveFile();
 		let view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
 
-		// Determine which special sources the template uses
-		let sources = new Set(
-			Object.values(template.variables)
-				.map(definition => definition.source)
-				.filter(Boolean),
-		);
+		let sources = Object.values(template.variables).flatMap(definition => (definition.source ? [definition.source] : []));
+		let requiredContext = getRequiredObsidianContext(this.plugin.specialVariables, sources);
 
-		let context: ExecutionContext = {
+		let context: ObsidianExecutionContext = {
 			activeFilePath: activeFile?.path ?? null,
 			activeFileBasename: activeFile?.basename ?? null,
 			activeFileFolder: activeFile?.parent?.path ?? null,
@@ -121,11 +123,10 @@ export class NoteTemplateExecutor {
 			cursor: view ? view.editor.getCursor() : null,
 		};
 
-		// Expensive sources — only read when needed
-		if (sources.has('activeFile.content'))
+		if (requiredContext.has('activeFileContent'))
 			context.activeFileContent = activeFile ? await this.plugin.app.vault.cachedRead(activeFile) : undefined;
-		if (sources.has('editor.selection')) context.editorSelection = view?.editor.getSelection() ?? undefined;
-		if (sources.has('clipboard')) {
+		if (requiredContext.has('editorSelection')) context.editorSelection = view?.editor.getSelection() ?? undefined;
+		if (requiredContext.has('clipboard')) {
 			try {
 				context.clipboard = await navigator.clipboard.readText();
 			} catch {
@@ -135,8 +136,6 @@ export class NoteTemplateExecutor {
 
 		return context;
 	}
-
-	/** ---------- Folder creation ---------- */
 
 	/**
 	 * Ensures a vault folder exists.  Prompts the user for confirmation when

@@ -2,6 +2,7 @@ import { parseYamlObject } from 'packages/core/src/frontmatter';
 import type { FormulaRuntime } from 'packages/core/src/formulas';
 import { resolveFilename, resolveOutputFolder } from 'packages/core/src/paths';
 import { renderTemplate } from 'packages/core/src/renderer';
+import type { SpecialVariableRegistry } from 'packages/core/src/specialVariables';
 import type { ExecutionContext, RenderedNote, ResolvedVariables, TemplateDefinition } from 'packages/core/src/types';
 import { resolveVariables } from 'packages/core/src/variables';
 
@@ -16,12 +17,13 @@ import { resolveVariables } from 'packages/core/src/variables';
  */
 export function renderNote(
 	template: TemplateDefinition,
+	specialVariables: SpecialVariableRegistry<unknown>,
 	context: ExecutionContext,
 	userValues: ResolvedVariables,
 	defaultOutputFolderPath: string,
 	runtime?: FormulaRuntime,
 ): RenderedNote & { values: ResolvedVariables; usedFolderFallback: boolean } {
-	let values = resolveVariables(template.variables, context, userValues, runtime);
+	let values = resolveVariables(template.variables, specialVariables, context, userValues, runtime);
 	let declared = new Set(Object.keys(template.variables));
 
 	// Render body and optional output frontmatter separately

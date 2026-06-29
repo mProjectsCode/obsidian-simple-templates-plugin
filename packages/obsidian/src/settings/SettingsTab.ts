@@ -2,8 +2,6 @@ import type SimpleTemplatesPlugin from 'packages/obsidian/src/main';
 import { PluginSettingTab } from 'obsidian';
 import type { SettingDefinitionItem, App } from 'obsidian';
 
-/** ---------- Path-based get / set helpers ---------- */
-
 /** Reads a value from a nested object using a dot-separated path (e.g.
  *  `"ui.showContextMenuItems"`). */
 function getPath(object: object, path: string): unknown {
@@ -45,7 +43,6 @@ export class SimpleTemplatesSettingsTab extends PluginSettingTab {
 	override async setControlValue(key: string, value: unknown): Promise<void> {
 		setPath(this.plugin.settings, key, value);
 		await this.plugin.saveSettings();
-		// Changing the template folder requires a registry refresh
 		if (key === 'templateFolderPath') await this.plugin.registry.refresh();
 	}
 

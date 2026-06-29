@@ -1,5 +1,6 @@
 import { parseFrontmatter } from 'packages/core/src/frontmatter';
 import type { NoteOutputDefinition, ParseResult, TemplateDefinition, TemplateIdentity, VariableDefinition } from 'packages/core/src/types';
+import type { SpecialVariableRegistry } from 'packages/core/src/specialVariables';
 import { validateMetadataShape, validateTemplate } from 'packages/core/src/validation';
 
 /** Describes a single line in a source string – position in the
@@ -26,8 +27,6 @@ function sourceLines(source: string): SourceLine[] {
 	}
 	return lines;
 }
-
-/** ---------- Fenced-block extraction ---------- */
 
 /** Looks for fenced blocks tagged with `note-frontmatter` and returns:
  *  - the body with those blocks stripped out
@@ -76,8 +75,6 @@ function extractOutputFrontmatter(source: string): { body: string; blocks: strin
 	return { body, blocks };
 }
 
-/** ---------- Frontmatter helpers ---------- */
-
 /** Guards that `value` is a plain object (not null / array). */
 function object(value: unknown): Record<string, unknown> | null {
 	return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
@@ -94,14 +91,12 @@ function readIdentity(value: unknown): TemplateIdentity {
 	};
 }
 
-/** ---------- Public API ---------- */
-
 /**
  * Parses a template file's content into a {@link TemplateDefinition}.  Any
  * structural or semantic issues are collected alongside the result so callers
  * can decide how strict to be.
  */
-export function parseTemplate(sourcePath: string, content: string): ParseResult {
+export function parseTemplate(sourcePath: string, content: string, specialVariables: SpecialVariableRegistry<unknown>): ParseResult {
 	try {
 		let document = parseFrontmatter(content);
 		let identity = readIdentity(document.data.template);
@@ -127,7 +122,7 @@ export function parseTemplate(sourcePath: string, content: string): ParseResult 
 			parsedFrontmatter: document.data,
 		};
 
-		let issues = [...validateMetadataShape(document.data), ...validateTemplate(template)];
+		let issues = [...validateMetadataShape(document.data), ...validateTemplate(template, specialVariables)];
 
 		// Sanity checks
 		if (blocks.length > 1) issues.push({ severity: 'error', message: 'A template may contain at most one note-frontmatter block.' });

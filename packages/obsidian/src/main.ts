@@ -3,6 +3,10 @@ import { FilePickerModal } from 'packages/obsidian/src/modals/FilePickerModal';
 import { ConfirmModal } from 'packages/obsidian/src/modals/ConfirmModal';
 import { TemplateMetadataEditorModal } from 'packages/obsidian/src/modals/TemplateMetadataEditorModal';
 import { NoteTemplateExecutor } from 'packages/obsidian/src/notes/NoteTemplateExecutor';
+import {
+	createObsidianSpecialVariableRegistry,
+	type ObsidianSpecialVariableRegistry,
+} from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
 import { DEFAULT_SETTINGS, loadPluginSettings } from 'packages/obsidian/src/settings/PluginSettings';
 import type { PluginSettings } from 'packages/obsidian/src/settings/PluginSettings';
 import { SimpleTemplatesSettingsTab } from 'packages/obsidian/src/settings/SettingsTab';
@@ -14,18 +18,23 @@ import { Notice, Plugin, TFile, debounce } from 'obsidian';
 export default class SimpleTemplatesPlugin extends Plugin {
 	settings: PluginSettings = structuredClone(DEFAULT_SETTINGS);
 	registry!: TemplateRegistry;
+	specialVariables!: ObsidianSpecialVariableRegistry;
 	private executor!: NoteTemplateExecutor;
 
 	override async onload(): Promise<void> {
-		// ---- Initialise subsystems ----
 		this.settings = loadPluginSettings(await this.loadData());
-		this.registry = new TemplateRegistry(this.app.vault, () => this.settings.templateFolderPath);
+		this.specialVariables = createObsidianSpecialVariableRegistry();
+		this.registry = new TemplateRegistry(this.app.vault, () => this.settings.templateFolderPath, this.specialVariables);
 		this.executor = new NoteTemplateExecutor(this);
 		await this.registry.refresh();
 
 		this.addSettingTab(new SimpleTemplatesSettingsTab(this.app, this));
+		this.registerCommands();
+		this.registerContextMenu();
+		this.registerVaultListeners();
+	}
 
-		// ---- Register commands ----
+	private registerCommands(): void {
 		this.addCommand({
 			id: 'create-note-from-template',
 			name: 'Templates: Create note from template',
@@ -50,8 +59,9 @@ export default class SimpleTemplatesPlugin extends Plugin {
 			},
 		});
 		this.addCommand({ id: 'validate-templates', name: 'Templates: Validate templates', callback: () => this.showValidationSummary() });
+	}
 
-		// ---- Editor context menu ----
+	private registerContextMenu(): void {
 		this.registerEvent(
 			this.app.workspace.on('editor-menu', menu => {
 				if (!this.settings.ui.showContextMenuItems) return;
@@ -63,8 +73,9 @@ export default class SimpleTemplatesPlugin extends Plugin {
 				);
 			}),
 		);
+	}
 
-		// ---- Vault change listener (debounced) ----
+	private registerVaultListeners(): void {
 		let refresh = debounce(
 			() => {
 				void this.registry.refresh().catch(error => {
@@ -83,8 +94,6 @@ export default class SimpleTemplatesPlugin extends Plugin {
 	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
 	}
-
-	/** ---------- File path helpers ---------- */
 
 	private insideTemplateFolder(file: TFile): boolean {
 		return this.pathIsInsideTemplateFolder(file.path);
@@ -114,8 +123,6 @@ export default class SimpleTemplatesPlugin extends Plugin {
 		let paths = oldPath === undefined ? [file.path] : [file.path, oldPath];
 		if (pathAffectsTemplateRegistry(folder, paths, file instanceof TFile)) refresh();
 	}
-
-	/** ---------- Metadata editor flow ---------- */
 
 	private async editCurrentTemplate(): Promise<void> {
 		let file = this.app.workspace.getActiveFile();
@@ -162,12 +169,11 @@ export default class SimpleTemplatesPlugin extends Plugin {
 			file,
 			content,
 			otherIds,
+			this.specialVariables,
 			async () => this.registry.refresh(),
 			async changedFile => this.openMetadataEditor(changedFile),
 		).open();
 	}
-
-	/** ---------- Validation summary ---------- */
 
 	private showValidationSummary(): void {
 		let invalid = this.registry.getValidationResults().filter(result => result.issues.some(issue => issue.severity === 'error'));

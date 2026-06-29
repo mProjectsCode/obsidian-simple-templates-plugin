@@ -1,5 +1,5 @@
-import { parseFrontmatter, serializeFrontmatter, SPECIAL_VARIABLE_SOURCES, VARIABLE_TYPES } from 'packages/core/src/index';
-import type { SpecialVariableSource, ValidationIssue, VariableDefinition, VariableType } from 'packages/core/src/index';
+import { parseFrontmatter, serializeFrontmatter, VARIABLE_TYPES } from 'packages/core/src/index';
+import type { ValidationIssue, VariableDefinition, VariableType } from 'packages/core/src/index';
 import {
 	createEditableTemplateMetadata,
 	mergeEditableTemplateMetadata,
@@ -10,6 +10,7 @@ import type { App, TFile } from 'obsidian';
 import { Modal, Notice, SettingGroup } from 'obsidian';
 import { parse } from 'yaml';
 import { ConfirmModal } from 'packages/obsidian/src/modals/ConfirmModal';
+import type { ObsidianSpecialVariableRegistry } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
 
 /**
  * Modal for editing a template's frontmatter metadata (identity, variables,
@@ -25,6 +26,7 @@ export class TemplateMetadataEditorModal extends Modal {
 		private readonly file: TFile,
 		private originalContent: string,
 		private readonly otherIds: Map<string, string>,
+		private readonly specialVariables: ObsidianSpecialVariableRegistry,
 		private readonly onSaved: () => Promise<void>,
 		private readonly onReload: (file: TFile) => Promise<void>,
 	) {
@@ -40,8 +42,6 @@ export class TemplateMetadataEditorModal extends Modal {
 		this.contentEl.empty();
 	}
 
-	/** ---------- Full modal render ---------- */
-
 	/** Builds the entire modal UI from scratch.  Called after every state
 	 *  mutation that changes the field count (e.g. adding/removing a variable). */
 	private render(): void {
@@ -49,23 +49,26 @@ export class TemplateMetadataEditorModal extends Modal {
 
 		this.setTitle(`Edit template metadata — ${this.file.basename}`);
 
-		// --- Identity section ---
 		let identityGroup = new SettingGroup(this.contentEl);
 		identityGroup.setHeading('Identity');
 		this.renderIdentityFields(identityGroup);
 
-		// --- Variables section (one group per variable) ---
 		for (let [name, definition] of Object.entries(this.state.variables)) {
 			this.renderVariable(name, definition);
 		}
 		this.renderAddVariableButton();
 
-		// --- Output section ---
 		let outputGroup = new SettingGroup(this.contentEl);
 		outputGroup.setHeading('Output');
 		this.renderOutput(outputGroup);
 
-		// --- YAML preview ---
+		this.renderPreview();
+		this.renderValidation();
+		this.renderActions();
+		this.updatePreview();
+	}
+
+	private renderPreview(): void {
 		let previewGroup = new SettingGroup(this.contentEl);
 		previewGroup.setHeading('Raw YAML preview');
 		previewGroup.addSetting(setting => {
@@ -75,13 +78,15 @@ export class TemplateMetadataEditorModal extends Modal {
 				textarea.inputEl.rows = 12;
 			});
 		});
+	}
 
-		// --- Validation output ---
+	private renderValidation(): void {
 		let validationGroup = new SettingGroup(this.contentEl);
 		validationGroup.setHeading('Validation');
 		this.validationEl = this.contentEl.createDiv();
+	}
 
-		// --- Action buttons ---
+	private renderActions(): void {
 		new SettingGroup(this.contentEl).addSetting(setting => {
 			setting
 				.addButton(button => button.setButtonText('Cancel').onClick(() => this.close()))
@@ -92,8 +97,6 @@ export class TemplateMetadataEditorModal extends Modal {
 						.onClick(() => this.save()),
 				);
 		});
-
-		this.updatePreview();
 	}
 
 	/** Renders the three identity text fields (id, name, description) and the
@@ -144,8 +147,6 @@ export class TemplateMetadataEditorModal extends Modal {
 				);
 		});
 	}
-
-	/** ---------- Variable rendering ---------- */
 
 	/** Renders all editable fields for a single variable as its own group. */
 	private renderVariable(name: string, definition: VariableDefinition): void {
@@ -257,9 +258,11 @@ export class TemplateMetadataEditorModal extends Modal {
 		group.addSetting(setting => {
 			setting.setName('Source').addDropdown(dropdown => {
 				dropdown.addOption('', 'None');
-				for (let source of SPECIAL_VARIABLE_SOURCES) dropdown.addOption(source, source);
+				for (let [source, sourceDefinition] of this.specialVariables) {
+					dropdown.addOption(source, sourceDefinition.label);
+				}
 				dropdown.setValue(definition.source ?? '').onChange(value => {
-					if (value) definition.source = value as SpecialVariableSource;
+					if (value) definition.source = value;
 					else delete definition.source;
 					this.updatePreview();
 				});
@@ -322,8 +325,6 @@ export class TemplateMetadataEditorModal extends Modal {
 			);
 		});
 	}
-
-	/** ---------- Output section ---------- */
 
 	/** Renders the output configuration fields. */
 	private renderOutput(group: SettingGroup): void {
@@ -394,14 +395,12 @@ export class TemplateMetadataEditorModal extends Modal {
 		});
 	}
 
-	/** ---------- Preview & validation ---------- */
-
 	private mergedContent(): string {
 		return mergeEditableTemplateMetadata(this.originalContent, this.state);
 	}
 
 	private getIssues(): ValidationIssue[] {
-		return validateEditableTemplateMetadata(this.file.path, this.originalContent, this.state, this.otherIds);
+		return validateEditableTemplateMetadata(this.file.path, this.originalContent, this.state, this.otherIds, this.specialVariables);
 	}
 
 	/** Re-renders the YAML preview textarea and the validation status. */
@@ -428,8 +427,6 @@ export class TemplateMetadataEditorModal extends Modal {
 		}
 	}
 
-	/** ---------- Save ---------- */
-
 	/** Validates, checks for external changes, and writes the merged content
 	 *  back to the vault. */
 	private async save(): Promise<void> {
@@ -455,8 +452,9 @@ export class TemplateMetadataEditorModal extends Modal {
 			return;
 		}
 
-		await this.app.vault.modify(this.file, this.mergedContent());
-		this.originalContent = this.mergedContent();
+		let mergedContent = this.mergedContent();
+		await this.app.vault.modify(this.file, mergedContent);
+		this.originalContent = mergedContent;
 		await this.onSaved();
 		new Notice(`Saved template metadata for “${this.file.basename}”.`);
 		this.close();

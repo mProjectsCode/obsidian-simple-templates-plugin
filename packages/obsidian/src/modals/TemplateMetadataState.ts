@@ -1,5 +1,11 @@
 import { mergeTemplateFrontmatter, parseFrontmatter, parseTemplate, VARIABLE_TYPES } from 'packages/core/src/index';
-import type { NoteOutputDefinition, ValidationIssue, VariableDefinition, VariableType } from 'packages/core/src/index';
+import type {
+	NoteOutputDefinition,
+	SpecialVariableRegistry,
+	ValidationIssue,
+	VariableDefinition,
+	VariableType,
+} from 'packages/core/src/index';
 
 /** In-memory representation of a template's editable frontmatter fields. */
 export interface EditableTemplateMetadata {
@@ -53,13 +59,14 @@ export function validateEditableTemplateMetadata(
 	content: string,
 	state: EditableTemplateMetadata,
 	otherIds: ReadonlyMap<string, string>,
+	specialVariables: SpecialVariableRegistry<unknown>,
 ): ValidationIssue[] {
 	let merged = mergeEditableTemplateMetadata(content, state);
 
 	// Run the standard parse/validation pipeline, downgrading
 	// "references variable" errors to warnings (they are expected during
 	// editing when variables have not been declared yet).
-	let issues = parseTemplate(sourcePath, merged).issues.map(issue =>
+	let issues = parseTemplate(sourcePath, merged, specialVariables).issues.map(issue =>
 		issue.message.includes('references variable') ? { ...issue, severity: 'warning' as const } : issue,
 	);
 

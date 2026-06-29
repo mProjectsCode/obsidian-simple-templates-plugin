@@ -7,8 +7,6 @@ const TOKEN_PATTERN = /{{\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*}}/g;
 /** Matches `{{#if variableName}}...{{/if}}` conditional blocks. */
 const IF_PATTERN = /{{#if\s+([a-zA-Z_][a-zA-Z0-9_.]*)\s*}}([\s\S]*?){{\/if}}/g;
 
-/** ---------- Value lookup ---------- */
-
 /** Resolves a dot-separated path (e.g. `"a.b.c"`) against a nested object. */
 function lookup(values: ResolvedVariables, path: string): unknown {
 	let cursor: unknown = values;
@@ -28,8 +26,6 @@ function renderValue(value: unknown): string {
 	if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') return value.toString();
 	return '';
 }
-
-/** ---------- Public API ---------- */
 
 /**
  * Scans one or more template strings and returns the set of root variable

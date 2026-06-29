@@ -1,6 +1,7 @@
 import { describe, expect, mock, test } from 'bun:test';
 import { createEditableTemplateMetadata, mergeEditableTemplateMetadata } from 'packages/obsidian/src/modals/TemplateMetadataState';
 import { pathAffectsTemplateRegistry } from 'packages/obsidian/src/templates/RegistryPaths';
+import { createObsidianSpecialVariableRegistry, getRequiredObsidianContext } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
 
 class MockTFile {
 	constructor(readonly path: string) {}
@@ -71,7 +72,7 @@ describe('template registry adapters', () => {
 			},
 			getAbstractFileByPath: () => file,
 		};
-		let registry = new TemplateRegistry(vault as never, () => 'Templates');
+		let registry = new TemplateRegistry(vault as never, () => 'Templates', createObsidianSpecialVariableRegistry());
 		await Promise.all([registry.refresh(), registry.refresh()]);
 		expect(maximumActiveReads).toBe(1);
 		expect(registry.getAll().map(template => template.id)).toEqual(['template-2']);
@@ -84,9 +85,19 @@ describe('template registry adapters', () => {
 			cachedRead: () => Promise.reject(new Error('gone')),
 			getAbstractFileByPath: () => file,
 		};
-		let registry = new TemplateRegistry(vault as never, () => 'Templates');
+		let registry = new TemplateRegistry(vault as never, () => 'Templates', createObsidianSpecialVariableRegistry());
 		await registry.refresh();
 		expect(registry.getValidationResults()[0]?.issues[0]?.message).toContain('Could not read template: gone');
+	});
+});
+
+describe('Obsidian special variables', () => {
+	test('registers built-in sources and their context requirements', () => {
+		let registry = createObsidianSpecialVariableRegistry();
+		expect(registry.resolve('activeFile.basename', { activeFileFolder: null, activeFileBasename: 'Note' })).toBe('Note');
+		expect(getRequiredObsidianContext(registry, ['activeFile.content', 'date.today', 'clipboard'])).toEqual(
+			new Set(['activeFileContent', 'clipboard']),
+		);
 	});
 });
 

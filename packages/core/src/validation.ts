@@ -1,22 +1,17 @@
 import { findVariableReferences } from 'packages/core/src/renderer';
 import { getFormulaDependencies } from 'packages/core/src/formulas';
-import type {
-	NoteOutputDefinition,
-	SpecialVariableSource,
-	TemplateDefinition,
-	ValidationIssue,
-	VariableDefinition,
-	VariableType,
-} from 'packages/core/src/types';
-import { SPECIAL_VARIABLE_SOURCES, VARIABLE_TYPES } from 'packages/core/src/types';
+import type { NoteOutputDefinition, TemplateDefinition, ValidationIssue, VariableDefinition, VariableType } from 'packages/core/src/types';
+import { VARIABLE_TYPES } from 'packages/core/src/types';
+import type { SpecialVariableRegistry } from 'packages/core/src/specialVariables';
 
 const VARIABLE_TYPE_SET = new Set<VariableType>(VARIABLE_TYPES);
-const SPECIAL_SOURCE_SET = new Set<SpecialVariableSource>(SPECIAL_VARIABLE_SOURCES);
-
-/** ---------- Variable validation ---------- */
 
 /** Validates a single variable definition's fields. */
-function validateVariableDefinition(name: string, definition: VariableDefinition): ValidationIssue[] {
+function validateVariableDefinition(
+	name: string,
+	definition: VariableDefinition,
+	specialVariables: SpecialVariableRegistry<unknown>,
+): ValidationIssue[] {
 	let issues: ValidationIssue[] = [];
 
 	if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name))
@@ -32,7 +27,7 @@ function validateVariableDefinition(name: string, definition: VariableDefinition
 		issues.push({ severity: 'error', path: `variables.${name}.options`, message: `Variable "${name}" requires at least one option.` });
 	}
 
-	if (definition.type === 'special' && (!definition.source || !SPECIAL_SOURCE_SET.has(definition.source))) {
+	if (definition.type === 'special' && (!definition.source || !specialVariables.has(definition.source))) {
 		issues.push({
 			severity: 'error',
 			path: `variables.${name}.source`,
@@ -117,19 +112,20 @@ function detectCycles(dependencyMap: Map<string, string[]>, issues: ValidationIs
 }
 
 /** Validates every variable definition and their formula dependency graph. */
-export function validateVariables(variables: Record<string, VariableDefinition>): ValidationIssue[] {
+export function validateVariables(
+	variables: Record<string, VariableDefinition>,
+	specialVariables: SpecialVariableRegistry<unknown>,
+): ValidationIssue[] {
 	let issues: ValidationIssue[] = [];
 
 	for (let [name, definition] of Object.entries(variables)) {
-		issues.push(...validateVariableDefinition(name, definition));
+		issues.push(...validateVariableDefinition(name, definition, specialVariables));
 	}
 
 	issues.push(...validateFormulaDependencies(variables));
 
 	return issues;
 }
-
-/** ---------- Metadata shape validation ---------- */
 
 /** Guards that `value` is a plain object (used for frontmatter field access). */
 function record(value: unknown): Record<string, unknown> | null {
@@ -202,12 +198,10 @@ function validateOutputEntry(output: Record<string, unknown>): ValidationIssue[]
 export function validateMetadataShape(data: Record<string, unknown>): ValidationIssue[] {
 	let issues: ValidationIssue[] = [];
 
-	// --- template identity ---
 	let identity = record(data.template);
 	if (!identity) return [{ severity: 'error', path: 'template', message: 'Template metadata must be a mapping.' }];
 	issues.push(...validateIdentityFields(identity));
 
-	// --- variables map ---
 	if (data.variables !== undefined) {
 		let variables = record(data.variables);
 		if (!variables) {
@@ -219,7 +213,6 @@ export function validateMetadataShape(data: Record<string, unknown>): Validation
 		}
 	}
 
-	// --- output ---
 	if (data.output !== undefined) {
 		let output = record(data.output);
 		if (!output) {
@@ -231,8 +224,6 @@ export function validateMetadataShape(data: Record<string, unknown>): Validation
 
 	return issues;
 }
-
-/** ---------- Output validation ---------- */
 
 /** Validates the `NoteOutputDefinition` sub-fields. */
 export function validateOutput(output: NoteOutputDefinition | undefined): ValidationIssue[] {
@@ -249,10 +240,8 @@ export function validateOutput(output: NoteOutputDefinition | undefined): Valida
 	return issues;
 }
 
-/** ---------- Template-level validation ---------- */
-
 /** Validates a fully parsed template definition. */
-export function validateTemplate(template: TemplateDefinition): ValidationIssue[] {
+export function validateTemplate(template: TemplateDefinition, specialVariables: SpecialVariableRegistry<unknown>): ValidationIssue[] {
 	let issues: ValidationIssue[] = [];
 
 	// ID and name are mandatory
@@ -262,7 +251,7 @@ export function validateTemplate(template: TemplateDefinition): ValidationIssue[
 	if (!template.name) issues.push({ severity: 'error', path: 'template.name', message: 'Template name is required.' });
 
 	// Delegate to sub-validators
-	issues.push(...validateVariables(template.variables), ...validateOutput(template.output));
+	issues.push(...validateVariables(template.variables, specialVariables), ...validateOutput(template.output));
 
 	// Check that every `{{var}}` / `{{#if var}}` reference in the template
 	// body matches a declared variable.

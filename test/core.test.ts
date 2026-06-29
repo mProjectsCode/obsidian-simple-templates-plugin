@@ -9,13 +9,14 @@ import {
 	mergeTemplateFrontmatter,
 	normalizeVaultFolder,
 	parseFrontmatter,
-	parseTemplate,
-	renderNote,
+	parseTemplate as parseTemplateWithRegistry,
+	renderNote as renderNoteWithRegistry,
 	renderTemplate,
-	resolveVariables,
+	resolveVariables as resolveVariablesWithRegistry,
+	SpecialVariableRegistry,
 	variablesNeedingInput,
 } from 'packages/core/src/index';
-import type { ExecutionContext, TemplateDefinition } from 'packages/core/src/index';
+import type { ExecutionContext, FormulaRuntime, ResolvedVariables, TemplateDefinition, VariableDefinition } from 'packages/core/src/index';
 
 const CONTEXT: ExecutionContext = {
 	activeFilePath: 'Projects/Source.md',
@@ -25,6 +26,38 @@ const CONTEXT: ExecutionContext = {
 	cursor: { line: 3, ch: 4 },
 };
 const RUNTIME = { now: () => new Date('2026-06-29T12:34:56.000Z'), uuid: () => 'fixed-uuid' };
+const SPECIAL_VARIABLES = new SpecialVariableRegistry()
+	.register('host.basename', {
+		label: 'Host basename',
+		resolve: context => context.activeFileBasename,
+	})
+	.register('test.value', {
+		label: 'Test value',
+		resolve: context => context.activeFileContent ?? null,
+	});
+
+function parseTemplate(sourcePath: string, content: string) {
+	return parseTemplateWithRegistry(sourcePath, content, SPECIAL_VARIABLES);
+}
+
+function resolveVariables(
+	definitions: Record<string, VariableDefinition>,
+	context: ExecutionContext,
+	userValues: ResolvedVariables,
+	runtime?: FormulaRuntime,
+) {
+	return resolveVariablesWithRegistry(definitions, SPECIAL_VARIABLES, context, userValues, runtime);
+}
+
+function renderNote(
+	template: TemplateDefinition,
+	context: ExecutionContext,
+	userValues: ResolvedVariables,
+	defaultOutputFolderPath: string,
+	runtime?: FormulaRuntime,
+) {
+	return renderNoteWithRegistry(template, SPECIAL_VARIABLES, context, userValues, defaultOutputFolderPath, runtime);
+}
 
 describe('template parser', () => {
 	let source = `---
@@ -144,9 +177,21 @@ describe('renderer and formulas', () => {
 });
 
 describe('variable resolution', () => {
+	test('resolves host-registered special variables', () => {
+		let values = resolveVariables(
+			{ value: { type: 'special', source: 'test.value' } },
+			{ ...CONTEXT, activeFileContent: 'content' },
+			{},
+		);
+		expect(values.value).toBe('content');
+		expect(SPECIAL_VARIABLES.get('test.value')?.label).toBe('Test value');
+		expect(() => SPECIAL_VARIABLES.resolve('missing', CONTEXT)).toThrow('is not registered');
+		expect(() => SPECIAL_VARIABLES.register('test.value', { label: 'Duplicate', resolve: () => null })).toThrow('already registered');
+	});
+
 	test('resolves context, user input, dependent formulas, defaults, and types', () => {
 		let definitions = {
-			file: { type: 'special' as const, source: 'activeFile.basename' as const },
+			file: { type: 'special' as const, source: 'host.basename' as const },
 			title: { type: 'text' as const, required: true },
 			slug: { type: 'text' as const, formula: 'slug(title)' },
 			loud: { type: 'text' as const, formula: 'upper(slug)' },

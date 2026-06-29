@@ -1,39 +1,8 @@
 import { FormulaError, MissingRequiredVariableError, VariableResolutionError } from 'packages/core/src/errors';
-import { evaluateFormula, formatLocalDate, getFormulaDependencies } from 'packages/core/src/formulas';
+import { evaluateFormula, getFormulaDependencies } from 'packages/core/src/formulas';
 import type { FormulaRuntime } from 'packages/core/src/formulas';
-import type { ExecutionContext, ResolvedVariables, SpecialVariableSource, VariableDefinition } from 'packages/core/src/types';
-
-/** ---------- Special-variable resolution ---------- */
-
-/** Returns the runtime value of a "special" source. */
-export function getSpecialValue(source: SpecialVariableSource, context: ExecutionContext, runtime?: FormulaRuntime): unknown {
-	switch (source) {
-		case 'activeFile.path':
-			return context.activeFilePath;
-		case 'activeFile.basename':
-			return context.activeFileBasename;
-		case 'activeFile.folder':
-			return context.activeFileFolder;
-		case 'activeFile.frontmatter':
-			return context.activeFileFrontmatter;
-		case 'activeFile.content':
-			return context.activeFileContent ?? null;
-		case 'cursor.line':
-			return context.cursor?.line ?? null;
-		case 'cursor.ch':
-			return context.cursor?.ch ?? null;
-		case 'editor.selection':
-			return context.editorSelection ?? null;
-		case 'clipboard':
-			return context.clipboard ?? null;
-		case 'date.today':
-			return formatLocalDate(runtime?.now() ?? new Date());
-		case 'date.now':
-			return (runtime?.now() ?? new Date()).toISOString();
-	}
-}
-
-/** ---------- Input-needs detection ---------- */
+import type { SpecialVariableRegistry } from 'packages/core/src/specialVariables';
+import type { ExecutionContext, ResolvedVariables, VariableDefinition } from 'packages/core/src/types';
 
 /** Returns the names of variables that will need user input (no formula, no
  *  source, or explicitly marked with `ask: true`). */
@@ -42,8 +11,6 @@ export function variablesNeedingInput(definitions: Record<string, VariableDefini
 		.filter(([, definition]) => definition.ask === true || (!definition.formula && !definition.source))
 		.map(([name]) => name);
 }
-
-/** ---------- Value coercion ---------- */
 
 /**
  * Coerces a raw variable value to the type declared in its definition.
@@ -99,21 +66,22 @@ function coerceList(name: string, definition: VariableDefinition, value: unknown
 }
 
 function coerceSelect(name: string, definition: VariableDefinition, value: unknown): string {
-	if (!definition.options?.includes(scalar(value, name)))
+	let selected = scalar(value, name);
+	if (!definition.options?.includes(selected))
 		throw new VariableResolutionError(`Variable "${name}" must be one of its configured options.`);
-	return scalar(value, name);
+	return selected;
 }
 
 function coerceDate(name: string, value: unknown): string {
-	if (!/^\d{4}-\d{2}-\d{2}$/.test(scalar(value, name)))
-		throw new VariableResolutionError(`Variable "${name}" must be a date in YYYY-MM-DD format.`);
-	return scalar(value, name);
+	let date = scalar(value, name);
+	if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new VariableResolutionError(`Variable "${name}" must be a date in YYYY-MM-DD format.`);
+	return date;
 }
 
 function coerceDatetime(name: string, value: unknown): string {
-	if (Number.isNaN(Date.parse(scalar(value, name))))
-		throw new VariableResolutionError(`Variable "${name}" must be a valid date and time.`);
-	return scalar(value, name);
+	let datetime = scalar(value, name);
+	if (Number.isNaN(Date.parse(datetime))) throw new VariableResolutionError(`Variable "${name}" must be a valid date and time.`);
+	return datetime;
 }
 
 /** Guards that a value is scalar (string, number, boolean, bigint) and returns
@@ -123,8 +91,6 @@ function scalar(value: unknown, name: string): string {
 	if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') return value.toString();
 	throw new VariableResolutionError(`Variable "${name}" must be a scalar value.`);
 }
-
-/** ---------- Formula resolution ---------- */
 
 /**
  * Evaluates formula-based variables in dependency order.  Formulas may
@@ -137,15 +103,11 @@ function resolveFormulas(
 	values: ResolvedVariables,
 	runtime?: FormulaRuntime,
 ): void {
-	// Start with every formula variable; remove the ones the user explicitly
-	// provided (they take priority)
 	let pending = new Set(
 		Object.entries(definitions)
-			.filter(([, definition]) => definition.formula)
+			.filter(([name, definition]) => definition.formula && !(definition.ask === true && Object.hasOwn(userValues, name)))
 			.map(([name]) => name),
 	);
-	for (let [name, definition] of Object.entries(definitions))
-		if (definition.formula && definition.ask === true && name in userValues) pending.delete(name);
 
 	// Iteratively resolve formulas whose dependencies are all available
 	while (pending.size > 0) {
@@ -170,13 +132,11 @@ function resolveFormulas(
 	}
 }
 
-/** ---------- Main entry point ---------- */
-
 /**
  * Resolves every variable for a template.
  *
  * Resolution order:
- *  1. Special sources (context-driven, e.g. `activeFile.path`).
+ *  1. Host-registered special sources.
  *  2. User-provided values (overrides specials).
  *  3. Formulas (evaluated in dependency order).
  *  4. Defaults are applied for any missing values.
@@ -185,6 +145,7 @@ function resolveFormulas(
  */
 export function resolveVariables(
 	definitions: Record<string, VariableDefinition>,
+	specialVariables: SpecialVariableRegistry<unknown>,
 	context: ExecutionContext,
 	userValues: ResolvedVariables,
 	runtime?: FormulaRuntime,
@@ -193,7 +154,7 @@ export function resolveVariables(
 
 	// ---- 1. Populate from special sources ----
 	for (let [name, definition] of Object.entries(definitions)) {
-		if (definition.source && definition.ask !== true) values[name] = getSpecialValue(definition.source, context, runtime);
+		if (definition.source && definition.ask !== true) values[name] = specialVariables.resolve(definition.source, context, runtime);
 	}
 
 	// ---- 2. Apply user-provided values (override specials) ----

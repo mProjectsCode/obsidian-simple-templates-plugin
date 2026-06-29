@@ -19,9 +19,9 @@ export class ConfirmModal extends Modal {
 	/** Opens the modal and returns a promise that resolves with the boolean
 	 *  result. */
 	confirm(): Promise<boolean> {
-		this.open();
 		return new Promise(resolve => {
 			this.resolve = resolve;
+			this.open();
 		});
 	}
 

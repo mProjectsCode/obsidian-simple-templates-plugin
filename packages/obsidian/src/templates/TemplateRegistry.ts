@@ -1,4 +1,4 @@
-import type { TemplateDefinition, ValidationIssue } from 'packages/core/src/index';
+import type { SpecialVariableRegistry, TemplateDefinition, ValidationIssue } from 'packages/core/src/index';
 import { normalizeVaultFolder, parseTemplate } from 'packages/core/src/index';
 import { TFile } from 'obsidian';
 import type { Vault } from 'obsidian';
@@ -22,28 +22,29 @@ export class TemplateRegistry {
 	constructor(
 		private readonly vault: Vault,
 		private readonly getFolder: () => string,
+		private readonly specialVariables: SpecialVariableRegistry<unknown>,
 	) {}
 
 	/**
-	 * Queues a full refresh (debounced by promise chaining so concurrent calls
-	 * are serialised).
+	 * Queues a full refresh. Promise chaining ensures concurrent calls run
+	 * serially.
 	 */
 	refresh(): Promise<void> {
-		let refresh = this.refreshTail.catch(() => undefined).then(() => this.refreshNow());
-		this.refreshTail = refresh;
-		return refresh;
+		let queuedRefresh = this.refreshTail.catch(() => undefined).then(() => this.refreshNow());
+		this.refreshTail = queuedRefresh;
+		return queuedRefresh;
 	}
 
 	/** Parses every Markdown file in the template folder and runs validation. */
 	private async refreshNow(): Promise<void> {
-		// Resolve the folder path
+		let configuredFolder = this.getFolder();
 		let folder: string;
 		try {
-			folder = normalizeVaultFolder(this.getFolder());
+			folder = normalizeVaultFolder(configuredFolder);
 		} catch (error) {
 			this.results = [
 				{
-					path: this.getFolder(),
+					path: configuredFolder,
 					template: null,
 					issues: [{ severity: 'error', message: error instanceof Error ? error.message : String(error) }],
 				},
@@ -51,38 +52,33 @@ export class TemplateRegistry {
 			return;
 		}
 
-		// Find all Markdown files inside the folder
 		let prefix = folder ? `${folder}/` : '';
 		let files = this.vault.getMarkdownFiles().filter(file => file.path.startsWith(prefix));
 
-		// Parse each file and gather validation results
-		this.results = await Promise.all(
-			files.map(async file => {
-				try {
-					let parsed = parseTemplate(file.path, await this.vault.cachedRead(file));
-					return { path: file.path, template: parsed.template, issues: parsed.issues };
-				} catch (error) {
-					return {
-						path: file.path,
-						template: null,
-						issues: [
-							{
-								severity: 'error' as const,
-								message: `Could not read template: ${error instanceof Error ? error.message : String(error)}`,
-							},
-						],
-					};
-				}
-			}),
-		);
-
-		// Detect duplicate template IDs
-		this.warnDuplicateIds();
+		this.results = await Promise.all(files.map(file => this.parseFile(file)));
+		this.addDuplicateIdIssues();
 	}
 
-	/** Adds duplicate-ID errors to the validation results. */
-	private warnDuplicateIds(): void {
-		// Group results by template ID
+	private async parseFile(file: TFile): Promise<TemplateValidationResult> {
+		try {
+			let parsed = parseTemplate(file.path, await this.vault.cachedRead(file), this.specialVariables);
+			return { path: file.path, template: parsed.template, issues: parsed.issues };
+		} catch (error) {
+			return {
+				path: file.path,
+				template: null,
+				issues: [
+					{
+						severity: 'error',
+						message: `Could not read template: ${error instanceof Error ? error.message : String(error)}`,
+					},
+				],
+			};
+		}
+	}
+
+	/** Adds validation errors to every template that shares an ID. */
+	private addDuplicateIdIssues(): void {
 		let byId = new Map<string, TemplateValidationResult[]>();
 		for (let result of this.results) {
 			if (!result.template?.id) continue;
@@ -91,7 +87,6 @@ export class TemplateRegistry {
 			byId.set(result.template.id, group);
 		}
 
-		// Annotate each duplicate group
 		for (let [id, duplicates] of byId) {
 			if (duplicates.length < 2) continue;
 			let paths = duplicates.map(result => result.path).join(', ');
