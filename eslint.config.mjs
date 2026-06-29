@@ -11,7 +11,7 @@ export default defineConfig(
 		ignores: ['node_modules/', 'exampleVault/', 'dist/', 'main.js'],
 	},
 	{
-		files: ['packages/obsidian/src/**/*.ts'],
+		files: ['packages/**/*.ts'],
 		extends: [
 			eslint.configs.recommended,
 			...tseslint.configs.recommended,

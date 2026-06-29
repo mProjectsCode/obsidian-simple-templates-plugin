@@ -3,7 +3,7 @@
 	"name": "Simple Templates",
 	"version": "0.0.1",
 	"minAppVersion": "1.13.0",
-	"description": "Insert reusable templates into notes.",
+	"description": "Create Markdown notes from reusable, variable-driven templates.",
 	"author": "Moritz Jung",
 	"authorUrl": "https://www.moritzjung.dev/",
 	"fundingUrl": "https://github.com/sponsors/mProjectsCode",
