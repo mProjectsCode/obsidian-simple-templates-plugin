@@ -17,19 +17,30 @@ export default class SimpleTemplatesPlugin extends Plugin {
 	private executor!: NoteTemplateExecutor;
 
 	override async onload(): Promise<void> {
+		// ---- Initialise subsystems ----
 		this.settings = loadPluginSettings(await this.loadData());
 		this.registry = new TemplateRegistry(this.app.vault, () => this.settings.templateFolderPath);
 		this.executor = new NoteTemplateExecutor(this);
 		await this.registry.refresh();
+
 		this.addSettingTab(new SimpleTemplatesSettingsTab(this.app, this));
 
-		this.addCommand({ id: 'create-note-from-template', name: 'Templates: Create note from template', callback: () => this.executor.execute() });
+		// ---- Register commands ----
+		this.addCommand({
+			id: 'create-note-from-template',
+			name: 'Templates: Create note from template',
+			callback: () => this.executor.execute(),
+		});
 		this.addCommand({
 			id: 'edit-current-template-metadata',
 			name: 'Templates: Edit current template metadata',
 			callback: () => this.editCurrentTemplate(),
 		});
-		this.addCommand({ id: 'edit-template-metadata', name: 'Templates: Edit template metadata…', callback: () => this.pickMetadataFile() });
+		this.addCommand({
+			id: 'edit-template-metadata',
+			name: 'Templates: Edit template metadata…',
+			callback: () => this.pickMetadataFile(),
+		});
 		this.addCommand({
 			id: 'refresh-template-registry',
 			name: 'Templates: Refresh template registry',
@@ -40,6 +51,7 @@ export default class SimpleTemplatesPlugin extends Plugin {
 		});
 		this.addCommand({ id: 'validate-templates', name: 'Templates: Validate templates', callback: () => this.showValidationSummary() });
 
+		// ---- Editor context menu ----
 		this.registerEvent(
 			this.app.workspace.on('editor-menu', menu => {
 				if (!this.settings.ui.showContextMenuItems) return;
@@ -51,6 +63,8 @@ export default class SimpleTemplatesPlugin extends Plugin {
 				);
 			}),
 		);
+
+		// ---- Vault change listener (debounced) ----
 		let refresh = debounce(
 			() => {
 				void this.registry.refresh().catch(error => {
@@ -70,6 +84,8 @@ export default class SimpleTemplatesPlugin extends Plugin {
 		await this.saveData(this.settings);
 	}
 
+	/** ---------- File path helpers ---------- */
+
 	private insideTemplateFolder(file: TFile): boolean {
 		return this.pathIsInsideTemplateFolder(file.path);
 	}
@@ -83,6 +99,11 @@ export default class SimpleTemplatesPlugin extends Plugin {
 		}
 	}
 
+	/**
+	 * Called by vault-change events.  Fires the debounced refresh only if the
+	 * changed file could affect the registry (i.e. it is inside the template
+	 * folder or is a directory being renamed away / into it).
+	 */
 	private scheduleRegistryRefresh(file: TAbstractFile, refresh: () => void, oldPath?: string): void {
 		let folder: string;
 		try {
@@ -93,6 +114,8 @@ export default class SimpleTemplatesPlugin extends Plugin {
 		let paths = oldPath === undefined ? [file.path] : [file.path, oldPath];
 		if (pathAffectsTemplateRegistry(folder, paths, file instanceof TFile)) refresh();
 	}
+
+	/** ---------- Metadata editor flow ---------- */
 
 	private async editCurrentTemplate(): Promise<void> {
 		let file = this.app.workspace.getActiveFile();
@@ -111,6 +134,8 @@ export default class SimpleTemplatesPlugin extends Plugin {
 
 	private async openMetadataEditor(file: TFile): Promise<void> {
 		let content = await this.app.vault.read(file);
+
+		// If the frontmatter is unparseable, offer to open the file for manual repair
 		try {
 			parseFrontmatter(content);
 		} catch (error) {
@@ -123,12 +148,15 @@ export default class SimpleTemplatesPlugin extends Plugin {
 			if (open) await this.app.workspace.getLeaf(false).openFile(file);
 			return;
 		}
+
+		// Collect IDs from other templates so we can detect duplicates
 		let otherIds = new Map(
 			this.registry
 				.getValidationResults()
 				.filter(result => result.path !== file.path && result.template?.id)
 				.map(result => [result.template?.id ?? '', result.path]),
 		);
+
 		new TemplateMetadataEditorModal(
 			this.app,
 			file,
@@ -138,6 +166,8 @@ export default class SimpleTemplatesPlugin extends Plugin {
 			async changedFile => this.openMetadataEditor(changedFile),
 		).open();
 	}
+
+	/** ---------- Validation summary ---------- */
 
 	private showValidationSummary(): void {
 		let invalid = this.registry.getValidationResults().filter(result => result.issues.some(issue => issue.severity === 'error'));

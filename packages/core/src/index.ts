@@ -1,3 +1,6 @@
+/** Core library barrel – re-exports every public symbol so consumers can import
+ *  from a single entry point. */
+
 export * from 'packages/core/src/errors';
 export * from 'packages/core/src/execution';
 export * from 'packages/core/src/formulas';

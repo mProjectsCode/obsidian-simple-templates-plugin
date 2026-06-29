@@ -2,6 +2,10 @@ import type SimpleTemplatesPlugin from 'packages/obsidian/src/main';
 import { PluginSettingTab } from 'obsidian';
 import type { SettingDefinitionItem, App } from 'obsidian';
 
+/** ---------- Path-based get / set helpers ---------- */
+
+/** Reads a value from a nested object using a dot-separated path (e.g.
+ *  `"ui.showContextMenuItems"`). */
 function getPath(object: object, path: string): unknown {
 	let cursor: unknown = object;
 	for (let part of path.split('.')) {
@@ -11,6 +15,8 @@ function getPath(object: object, path: string): unknown {
 	return cursor;
 }
 
+/** Writes a value into a nested object, creating intermediate objects as
+ *  needed. */
 function setPath(object: object, path: string, value: unknown): void {
 	let parts = path.split('.');
 	let last = parts.pop();
@@ -39,6 +45,7 @@ export class SimpleTemplatesSettingsTab extends PluginSettingTab {
 	override async setControlValue(key: string, value: unknown): Promise<void> {
 		setPath(this.plugin.settings, key, value);
 		await this.plugin.saveSettings();
+		// Changing the template folder requires a registry refresh
 		if (key === 'templateFolderPath') await this.plugin.registry.refresh();
 	}
 
@@ -56,7 +63,7 @@ export class SimpleTemplatesSettingsTab extends PluginSettingTab {
 			},
 			{
 				name: 'Show editor context menu item',
-				desc: 'Show “Create note from template” in the Markdown editor context menu.',
+				desc: 'Show "Create note from template" in the Markdown editor context menu.',
 				control: { type: 'toggle', key: 'ui.showContextMenuItems' },
 			},
 		];

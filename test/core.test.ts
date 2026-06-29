@@ -163,14 +163,16 @@ describe('variable resolution', () => {
 	});
 
 	test('lets formulas consume omitted optional inputs as empty values', () => {
-		expect(resolveVariables({ base: { type: 'text' }, derived: { type: 'text', formula: 'upper(base)' } }, CONTEXT, {}).derived).toBe('');
+		expect(resolveVariables({ base: { type: 'text' }, derived: { type: 'text', formula: 'upper(base)' } }, CONTEXT, {}).derived).toBe(
+			'',
+		);
 	});
 
 	test('detects missing required values and formula cycles', () => {
 		expect(() => resolveVariables({ title: { type: 'text', required: true } }, CONTEXT, {})).toThrow(MissingRequiredVariableError);
-		expect(() => resolveVariables({ a: { type: 'text', formula: 'lower(b)' }, b: { type: 'text', formula: 'lower(a)' } }, CONTEXT, {})).toThrow(
-			FormulaError,
-		);
+		expect(() =>
+			resolveVariables({ a: { type: 'text', formula: 'lower(b)' }, b: { type: 'text', formula: 'lower(a)' } }, CONTEXT, {}),
+		).toThrow(FormulaError);
 	});
 
 	test('rejects multiselect values outside configured options', () => {
@@ -230,7 +232,9 @@ describe('frontmatter editing and complete rendering', () => {
 	test('recognizes and replaces empty frontmatter', () => {
 		let content = '---\n---\nBody';
 		expect(parseFrontmatter(content).hasFrontmatter).toBeTrue();
-		expect(mergeTemplateFrontmatter(content, { template: { id: 'x', name: 'X' } })).toBe('---\ntemplate:\n  id: x\n  name: X\n---\nBody');
+		expect(mergeTemplateFrontmatter(content, { template: { id: 'x', name: 'X' } })).toBe(
+			'---\ntemplate:\n  id: x\n  name: X\n---\nBody',
+		);
 	});
 	test('preserves unknown metadata and body exactly', () => {
 		let content = '---\ntemplate:\n  id: old\ncssclasses: [wide]\n---\nBody\n```note-frontmatter\na: b\n```\n';

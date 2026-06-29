@@ -1,6 +1,8 @@
 import type { App } from 'obsidian';
-import { Modal, Setting } from 'obsidian';
+import { Modal, SettingGroup } from 'obsidian';
 
+/** A simple yes/no confirmation dialog that resolves a Promise with the
+ *  user's choice. */
 export class ConfirmModal extends Modal {
 	private resolve: (confirmed: boolean) => void = () => undefined;
 	private answered = false;
@@ -14,6 +16,8 @@ export class ConfirmModal extends Modal {
 		super(app);
 	}
 
+	/** Opens the modal and returns a promise that resolves with the boolean
+	 *  result. */
 	confirm(): Promise<boolean> {
 		this.open();
 		return new Promise(resolve => {
@@ -24,24 +28,27 @@ export class ConfirmModal extends Modal {
 	override onOpen(): void {
 		this.setTitle(this.heading);
 		this.contentEl.createEl('p', { text: this.message });
-		new Setting(this.contentEl)
-			.addButton(button =>
-				button.setButtonText('Cancel').onClick(() => {
-					this.answered = true;
-					this.resolve(false);
-					this.close();
-				}),
-			)
-			.addButton(button =>
-				button
-					.setCta()
-					.setButtonText(this.confirmLabel)
-					.onClick(() => {
+
+		new SettingGroup(this.contentEl).addSetting(setting => {
+			setting
+				.addButton(button =>
+					button.setButtonText('Cancel').onClick(() => {
 						this.answered = true;
-						this.resolve(true);
+						this.resolve(false);
 						this.close();
 					}),
-			);
+				)
+				.addButton(button =>
+					button
+						.setCta()
+						.setButtonText(this.confirmLabel)
+						.onClick(() => {
+							this.answered = true;
+							this.resolve(true);
+							this.close();
+						}),
+				);
+		});
 	}
 
 	override onClose(): void {

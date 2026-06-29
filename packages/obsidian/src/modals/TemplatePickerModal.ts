@@ -2,6 +2,10 @@ import type { TemplateDefinition } from 'packages/core/src/index';
 import type { App } from 'obsidian';
 import { FuzzySuggestModal } from 'obsidian';
 
+/**
+ * A fuzzy-suggest modal for selecting a template to execute, showing its
+ * description alongside the name when available.
+ */
 export class TemplatePickerModal extends FuzzySuggestModal<TemplateDefinition> {
 	private resolve: (template: TemplateDefinition | null) => void = () => undefined;
 	private settled = false;
@@ -13,6 +17,8 @@ export class TemplatePickerModal extends FuzzySuggestModal<TemplateDefinition> {
 		super(app);
 	}
 
+	/** Opens the modal and resolves with the selected template (or null if
+	 *  cancelled). */
 	choose(): Promise<TemplateDefinition | null> {
 		this.setPlaceholder('Choose a template…');
 		return new Promise(resolve => {
@@ -25,15 +31,19 @@ export class TemplatePickerModal extends FuzzySuggestModal<TemplateDefinition> {
 	getItems(): TemplateDefinition[] {
 		return this.templates;
 	}
+
 	getItemText(template: TemplateDefinition): string {
 		return template.description ? `${template.name} — ${template.description}` : template.name;
 	}
+
 	onChooseItem(item: TemplateDefinition, _evt: MouseEvent | KeyboardEvent): void {
 		this.settle(item);
 	}
+
 	override onClose(): void {
 		super.onClose();
-		// SuggestModal closes before it reports the selected item.
+		// SuggestModal fires `onChooseItem` before `onClose`, so use a
+		// microtask to settle *after* the selection has been reported.
 		queueMicrotask(() => this.settle(null));
 	}
 
