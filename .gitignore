@@ -1,0 +1,23 @@
+# Editors
+.vscode
+.idea
+*.iml
+
+# Dependencies and build output
+node_modules
+dist
+main.js
+*.map
+
+# Obsidian runtime data
+data.json
+.DS_Store
+
+# Keep the example vault empty except for development plugin builds.
+exampleVault/*
+!exampleVault/.gitkeep
+exampleVault/.obsidian/*
+!exampleVault/.obsidian/plugins
+exampleVault/.obsidian/plugins/*
+exampleVault/.obsidian/plugins/simple-templates/*
+!exampleVault/.obsidian/plugins/simple-templates/.hotreload
