@@ -1,8 +1,7 @@
 {
 	"compilerOptions": {
 		"paths": {
-			"packages/*": ["./packages/*"],
-			"test/*": ["./test/*"]
+			"packages/*": ["./packages/*"]
 		},
 		"module": "ESNext",
 		"target": "ES2022",
@@ -24,5 +23,5 @@
 		"allowSyntheticDefaultImports": true,
 		"types": ["bun"]
 	},
-	"include": ["packages/core/**/*.ts", "packages/obsidian/**/*.ts", "test/**/*.ts"]
+	"include": ["packages/core/**/*.ts", "packages/obsidian/**/*.ts"]
 }

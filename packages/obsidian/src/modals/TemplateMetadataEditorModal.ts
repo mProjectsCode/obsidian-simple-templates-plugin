@@ -1,4 +1,4 @@
-import { parseFrontmatter, serializeFrontmatter, VARIABLE_TYPES } from 'packages/core/src/index';
+import { FrontmatterService, VARIABLE_TYPES } from 'packages/core/src/index';
 import type { ValidationIssue, VariableDefinition, VariableType } from 'packages/core/src/index';
 import {
 	createEditableTemplateMetadata,
@@ -20,6 +20,7 @@ export class TemplateMetadataEditorModal extends Modal {
 	private state: EditableTemplateMetadata;
 	private previewEl: HTMLTextAreaElement | null = null;
 	private validationEl: HTMLElement | null = null;
+	private readonly frontmatter = new FrontmatterService();
 
 	constructor(
 		app: App,
@@ -224,7 +225,8 @@ export class TemplateMetadataEditorModal extends Modal {
 						.setValue(
 							definition.default === undefined
 								? ''
-								: serializeFrontmatter({ value: definition.default })
+								: this.frontmatter
+										.serialize({ value: definition.default })
 										.replace(/^value:\s*/, '')
 										.trim(),
 						)
@@ -406,8 +408,8 @@ export class TemplateMetadataEditorModal extends Modal {
 	/** Re-renders the YAML preview textarea and the validation status. */
 	private updatePreview(): void {
 		try {
-			let document = parseFrontmatter(this.mergedContent());
-			if (this.previewEl) this.previewEl.value = serializeFrontmatter(document.data);
+			let document = this.frontmatter.parse(this.mergedContent());
+			if (this.previewEl) this.previewEl.value = this.frontmatter.serialize(document.data);
 
 			let issues = this.getIssues();
 			if (this.validationEl) {

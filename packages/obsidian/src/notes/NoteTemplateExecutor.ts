@@ -1,4 +1,4 @@
-import { findAvailablePath, joinVaultPath, renderNote } from 'packages/core/src/index';
+import { OutputPathResolver, TemplateEngine } from 'packages/core/src/index';
 import type { FileConflictStrategy, TemplateDefinition } from 'packages/core/src/index';
 import type SimpleTemplatesPlugin from 'packages/obsidian/src/main';
 import { ConfirmModal } from 'packages/obsidian/src/modals/ConfirmModal';
@@ -9,7 +9,12 @@ import type { ObsidianExecutionContext } from 'packages/obsidian/src/notes/Obsid
 import { MarkdownView, Notice, TFolder } from 'obsidian';
 
 export class NoteTemplateExecutor {
-	constructor(private readonly plugin: SimpleTemplatesPlugin) {}
+	private readonly engine: TemplateEngine;
+	private readonly paths = new OutputPathResolver();
+
+	constructor(private readonly plugin: SimpleTemplatesPlugin) {
+		this.engine = new TemplateEngine(plugin.specialVariables);
+	}
 
 	/**
 	 * The full "create note from template" flow:
@@ -48,13 +53,7 @@ export class NoteTemplateExecutor {
 			if (userValues === null) return;
 
 			// ---- Step 5: Render ----
-			let rendered = renderNote(
-				selected,
-				this.plugin.specialVariables,
-				context,
-				userValues,
-				this.plugin.settings.defaultOutputFolderPath,
-			);
+			let rendered = this.engine.render(selected, context, userValues, this.plugin.settings.defaultOutputFolderPath);
 			if (rendered.usedFolderFallback) new Notice('No active file was available; using the default output folder.');
 
 			// ---- Step 6: Ensure output folder exists ----
@@ -83,7 +82,7 @@ export class NoteTemplateExecutor {
 	 * is cancelled (`null` is returned).
 	 */
 	private async resolveOutputPath(folder: string, filename: string, strategy: FileConflictStrategy): Promise<string | null> {
-		let desiredPath = joinVaultPath(folder, filename);
+		let desiredPath = this.paths.join(folder, filename);
 
 		if (strategy === 'prompt' && this.plugin.app.vault.getAbstractFileByPath(desiredPath)) {
 			let append = await new ConfirmModal(
@@ -96,7 +95,7 @@ export class NoteTemplateExecutor {
 			strategy = 'append-number';
 		}
 
-		return findAvailablePath(
+		return this.paths.findAvailable(
 			desiredPath,
 			strategy === 'prompt' ? 'cancel' : strategy,
 			candidate => this.plugin.app.vault.getAbstractFileByPath(candidate) !== null,

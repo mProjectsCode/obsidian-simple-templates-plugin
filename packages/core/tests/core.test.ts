@@ -1,20 +1,18 @@
 import { describe, expect, test } from 'bun:test';
 import {
 	FileConflictError,
+	FormulaEvaluator,
 	FormulaError,
+	FrontmatterService,
 	MissingRequiredVariableError,
+	OutputPathResolver,
+	TemplateEngine,
+	TemplateParser,
+	TemplateProgramParser,
+	TemplateRenderer,
 	TemplateValidationError,
-	evaluateFormula,
-	findAvailablePath,
-	mergeTemplateFrontmatter,
-	normalizeVaultFolder,
-	parseFrontmatter,
-	parseTemplate as parseTemplateWithRegistry,
-	renderNote as renderNoteWithRegistry,
-	renderTemplate,
-	resolveVariables as resolveVariablesWithRegistry,
+	VariableResolver,
 	SpecialVariableRegistry,
-	variablesNeedingInput,
 } from 'packages/core/src/index';
 import type { ExecutionContext, FormulaRuntime, ResolvedVariables, TemplateDefinition, VariableDefinition } from 'packages/core/src/index';
 
@@ -35,9 +33,16 @@ const SPECIAL_VARIABLES = new SpecialVariableRegistry()
 		label: 'Test value',
 		resolve: context => context.activeFileContent ?? null,
 	});
+const TEMPLATE_PARSER = new TemplateParser(SPECIAL_VARIABLES);
+const PROGRAM_PARSER = new TemplateProgramParser();
+const TEMPLATE_RENDERER = new TemplateRenderer(PROGRAM_PARSER);
+const FRONTMATTER = new FrontmatterService();
+const PATHS = new OutputPathResolver(TEMPLATE_RENDERER);
+const FORMULAS = new FormulaEvaluator();
+const DETERMINISTIC_FORMULAS = new FormulaEvaluator(RUNTIME);
 
 function parseTemplate(sourcePath: string, content: string) {
-	return parseTemplateWithRegistry(sourcePath, content, SPECIAL_VARIABLES);
+	return TEMPLATE_PARSER.parse(sourcePath, content);
 }
 
 function resolveVariables(
@@ -46,7 +51,7 @@ function resolveVariables(
 	userValues: ResolvedVariables,
 	runtime?: FormulaRuntime,
 ) {
-	return resolveVariablesWithRegistry(definitions, SPECIAL_VARIABLES, context, userValues, runtime);
+	return new VariableResolver(SPECIAL_VARIABLES, runtime).resolve(definitions, context, userValues);
 }
 
 function renderNote(
@@ -56,7 +61,7 @@ function renderNote(
 	defaultOutputFolderPath: string,
 	runtime?: FormulaRuntime,
 ) {
-	return renderNoteWithRegistry(template, SPECIAL_VARIABLES, context, userValues, defaultOutputFolderPath, runtime);
+	return new TemplateEngine(SPECIAL_VARIABLES, runtime).render(template, context, userValues, defaultOutputFolderPath);
 }
 
 describe('template parser', () => {
@@ -74,9 +79,12 @@ output:
   filename: "{{ slug }}"
 custom: keep
 ---
+This content is above the output frontmatter and must be discarded.
+
 \`\`\`note-frontmatter
 title: "{{ title }}"
 \`\`\`
+
 # {{ title }}
 `;
 
@@ -86,7 +94,10 @@ title: "{{ title }}"
 		expect(result.template?.id).toBe('project-note');
 		expect(result.template?.parsedFrontmatter.custom).toBe('keep');
 		expect(result.template?.outputFrontmatterTemplate).toBe('title: "{{ title }}"');
+		expect(result.template?.ast?.noteFrontmatter?.references).toEqual(['title']);
+		expect(result.template?.ast?.filename?.references).toEqual(['slug']);
 		expect(result.template?.body).toBe('\n# {{ title }}\n');
+		expect(result.template?.body).not.toContain('must be discarded');
 	});
 
 	test('ignores literal frontmatter examples inside longer fences and supports empty blocks', () => {
@@ -99,7 +110,7 @@ title: "{{ title }}"
 
 		let empty = parseTemplate('Templates/empty.md', '---\ntemplate: { id: empty, name: Empty }\n---\n```note-frontmatter\n```\nBody');
 		expect(empty.template?.outputFrontmatterTemplate).toBe('');
-		expect(empty.template?.body).toBe('\nBody');
+		expect(empty.template?.body).toBe('Body');
 	});
 
 	test('reports undeclared references and duplicate output blocks', () => {
@@ -113,6 +124,19 @@ title: "{{ title }}"
 		let result = parseTemplate('bad.md', '---\ntemplate: [\n---\nbody');
 		expect(result.template).toBeNull();
 		expect(result.issues[0]?.message).toContain('Invalid YAML');
+	});
+
+	test('reports an unclosed output frontmatter fence', () => {
+		let result = parseTemplate('bad.md', '---\ntemplate: { id: bad, name: Bad }\n---\n```note-frontmatter\ntitle: value');
+		expect(result.template).toBeNull();
+		expect(result.issues[0]?.message).toBe('The note-frontmatter block is not closed.');
+	});
+
+	test('does not treat a thematic break later in the document as frontmatter', () => {
+		let content = 'Introduction\n---\ntemplate: { id: not-frontmatter, name: Not frontmatter }\n---\nBody';
+		let document = FRONTMATTER.parse(content);
+		expect(document).toEqual({ raw: null, data: {}, body: content, hasFrontmatter: false });
+		expect(parseTemplate('plain.md', content).issues.some(issue => issue.message.includes('frontmatter is missing'))).toBeTrue();
 	});
 
 	test('validates metadata shapes and formula graphs before execution', () => {
@@ -135,11 +159,36 @@ body`,
 		expect(messages.some(message => message.includes('circular dependency'))).toBeTrue();
 		expect(messages).toContain('Open after create must be true or false.');
 	});
+
+	test('reports malformed output templates without aborting parsing', () => {
+		let result = parseTemplate(
+			'bad-output.md',
+			'---\ntemplate: { id: bad-output, name: Bad output }\noutput:\n  filename: 12\n  folder: { mode: path, path: 34 }\n---\nBody',
+		);
+		expect(result.template).not.toBeNull();
+		expect(result.issues.map(issue => issue.message)).toContain('Output filename must be a string.');
+		expect(result.issues.map(issue => issue.message)).toContain('Explicit output folder requires a path.');
+	});
 });
 
 describe('renderer and formulas', () => {
+	test('builds a source-located AST and renders nested conditionals', () => {
+		let program = PROGRAM_PARSER.parse('Hi {{ user.name }}{{#if enabled}}!{{#if extra}}+{{ extra }}{{/if}}{{/if}}');
+		expect(program.references).toEqual(['user', 'enabled', 'extra']);
+		expect(program.nodes.map(node => node.type)).toEqual(['text', 'variable', 'if']);
+		expect(program.nodes[1]).toMatchObject({ type: 'variable', path: 'user.name', parts: ['user', 'name'], start: 3, end: 18 });
+		expect(TEMPLATE_RENDERER.renderProgram(program, { user: { name: 'Ada' }, enabled: true, extra: 'yes' })).toBe('Hi Ada!+yes');
+		expect(TEMPLATE_RENDERER.renderProgram(program, { user: { name: 'Ada' }, enabled: false, extra: 'yes' })).toBe('Hi Ada');
+	});
+
+	test('reports malformed template syntax with an exact source offset', () => {
+		expect(() => PROGRAM_PARSER.parse('{{ bad-path }}')).toThrow('offset 0');
+		expect(() => PROGRAM_PARSER.parse('{{#if show}}missing close')).toThrow('Unclosed {{#if show}}');
+		expect(() => PROGRAM_PARSER.parse('{{/if}}')).toThrow('Unexpected {{/if}}');
+	});
+
 	test('renders nested values, arrays, missing values, and conditionals', () => {
-		let rendered = renderTemplate(
+		let rendered = TEMPLATE_RENDERER.render(
 			'{{ user.name }}\n{{ tags }}\n{{ absent }}{{#if show}}yes{{/if}}',
 			{
 				user: { name: 'Ada' },
@@ -149,20 +198,20 @@ describe('renderer and formulas', () => {
 			new Set(['user', 'tags', 'absent', 'show']),
 		);
 		expect(rendered).toBe('Ada\none\ntwo\nyes');
-		expect(() => renderTemplate('{{ unknown }}', {}, new Set())).toThrow(TemplateValidationError);
+		expect(() => TEMPLATE_RENDERER.render('{{ unknown }}', {}, new Set())).toThrow(TemplateValidationError);
 	});
 
 	test('evaluates every safe built-in', () => {
-		expect(evaluateFormula('today()', {}, RUNTIME)).toBe('2026-06-29');
-		expect(evaluateFormula('now()', {}, RUNTIME)).toBe('2026-06-29T12:34:56.000Z');
-		expect(evaluateFormula('uuid()', {}, RUNTIME)).toBe('fixed-uuid');
-		expect(evaluateFormula('slug(title)', { title: ' Héllo, World! ' }, RUNTIME)).toBe('hello-world');
-		expect(evaluateFormula('lower(title)', { title: 'ABC' })).toBe('abc');
-		expect(evaluateFormula('upper(title)', { title: 'abc' })).toBe('ABC');
-		expect(evaluateFormula('trim(title)', { title: ' x ' })).toBe('x');
-		expect(evaluateFormula(`replace(title, "a", 'b')`, { title: 'a cat' })).toBe('b cbt');
-		expect(() => evaluateFormula('eval(code)', { code: 'x' })).toThrow(FormulaError);
-		expect(() => evaluateFormula('slug()', {})).toThrow('expects 1 argument');
+		expect(DETERMINISTIC_FORMULAS.evaluate('today()', {})).toBe('2026-06-29');
+		expect(DETERMINISTIC_FORMULAS.evaluate('now()', {})).toBe('2026-06-29T12:34:56.000Z');
+		expect(DETERMINISTIC_FORMULAS.evaluate('uuid()', {})).toBe('fixed-uuid');
+		expect(DETERMINISTIC_FORMULAS.evaluate('slug(title)', { title: ' Héllo, World! ' })).toBe('hello-world');
+		expect(FORMULAS.evaluate('lower(title)', { title: 'ABC' })).toBe('abc');
+		expect(FORMULAS.evaluate('upper(title)', { title: 'abc' })).toBe('ABC');
+		expect(FORMULAS.evaluate('trim(title)', { title: ' x ' })).toBe('x');
+		expect(FORMULAS.evaluate(`replace(title, "a", 'b')`, { title: 'a cat' })).toBe('b cbt');
+		expect(() => FORMULAS.evaluate('eval(code)', { code: 'x' })).toThrow(FormulaError);
+		expect(() => FORMULAS.evaluate('slug()', {})).toThrow('expects 1 argument');
 	});
 
 	test('uses the local calendar date for today', () => {
@@ -172,7 +221,7 @@ describe('renderer and formulas', () => {
 			getDate: () => 30,
 			toISOString: () => '2026-06-29T22:30:00.000Z',
 		} as Date;
-		expect(evaluateFormula('today()', {}, { now: () => localDate, uuid: () => 'unused' })).toBe('2026-06-30');
+		expect(new FormulaEvaluator({ now: () => localDate, uuid: () => 'unused' }).evaluate('today()', {})).toBe('2026-06-30');
 	});
 });
 
@@ -197,7 +246,7 @@ describe('variable resolution', () => {
 			loud: { type: 'text' as const, formula: 'upper(slug)' },
 			count: { type: 'number' as const, default: '2' },
 		};
-		expect(variablesNeedingInput(definitions)).toEqual(['title', 'count']);
+		expect(VariableResolver.needingInput(definitions)).toEqual(['title', 'count']);
 		expect(resolveVariables(definitions, CONTEXT, { title: 'My Note' }, RUNTIME)).toEqual({
 			file: 'Source',
 			title: 'My Note',
@@ -229,16 +278,16 @@ describe('variable resolution', () => {
 
 describe('paths and conflicts', () => {
 	test('normalizes safe vault paths and rejects escape paths', () => {
-		expect(normalizeVaultFolder('./Projects//./Work/')).toBe('Projects/Work');
-		expect(() => normalizeVaultFolder('/tmp')).toThrow(TemplateValidationError);
-		expect(() => normalizeVaultFolder('Projects/../Secrets')).toThrow(TemplateValidationError);
-		expect(() => normalizeVaultFolder('C:\\tmp')).toThrow(TemplateValidationError);
+		expect(PATHS.normalizeFolder('./Projects//./Work/')).toBe('Projects/Work');
+		expect(() => PATHS.normalizeFolder('/tmp')).toThrow(TemplateValidationError);
+		expect(() => PATHS.normalizeFolder('Projects/../Secrets')).toThrow(TemplateValidationError);
+		expect(() => PATHS.normalizeFolder('C:\\tmp')).toThrow(TemplateValidationError);
 	});
 
 	test('appends numbers without overwriting', () => {
 		let existing = new Set(['Notes/Name.md', 'Notes/Name 1.md']);
-		expect(findAvailablePath('Notes/Name.md', 'append-number', path => existing.has(path))).toBe('Notes/Name 2.md');
-		expect(() => findAvailablePath('Notes/Name.md', 'cancel', path => existing.has(path))).toThrow(FileConflictError);
+		expect(PATHS.findAvailable('Notes/Name.md', 'append-number', path => existing.has(path))).toBe('Notes/Name 2.md');
+		expect(() => PATHS.findAvailable('Notes/Name.md', 'cancel', path => existing.has(path))).toThrow(FileConflictError);
 	});
 
 	test('renders explicit and fallback folder modes and sanitizes filenames', () => {
@@ -276,15 +325,15 @@ describe('paths and conflicts', () => {
 describe('frontmatter editing and complete rendering', () => {
 	test('recognizes and replaces empty frontmatter', () => {
 		let content = '---\n---\nBody';
-		expect(parseFrontmatter(content).hasFrontmatter).toBeTrue();
-		expect(mergeTemplateFrontmatter(content, { template: { id: 'x', name: 'X' } })).toBe(
+		expect(FRONTMATTER.parse(content).hasFrontmatter).toBeTrue();
+		expect(FRONTMATTER.mergeTemplate(content, { template: { id: 'x', name: 'X' } })).toBe(
 			'---\ntemplate:\n  id: x\n  name: X\n---\nBody',
 		);
 	});
 	test('preserves unknown metadata and body exactly', () => {
 		let content = '---\ntemplate:\n  id: old\ncssclasses: [wide]\n---\nBody\n```note-frontmatter\na: b\n```\n';
-		let merged = mergeTemplateFrontmatter(content, { template: { id: 'new', name: 'New' }, variables: {}, output: undefined });
-		let parsed = parseFrontmatter(merged);
+		let merged = FRONTMATTER.mergeTemplate(content, { template: { id: 'new', name: 'New' }, variables: {}, output: undefined });
+		let parsed = FRONTMATTER.parse(merged);
 		expect(parsed.data.cssclasses).toEqual(['wide']);
 		expect(parsed.data.template).toEqual({ id: 'new', name: 'New' });
 		expect(parsed.body).toBe('Body\n```note-frontmatter\na: b\n```\n');
@@ -307,9 +356,10 @@ output:
 \`\`\`note-frontmatter
 title: "{{ title }}"
 \`\`\`
+
 # {{ title }}
 `,
-		).template as TemplateDefinition;
+		).template!;
 		let rendered = renderNote(template, CONTEXT, { title: 'Example Project' }, 'Default', RUNTIME);
 		expect(rendered.folder).toBe('Projects');
 		expect(rendered.filename).toBe('example-project.md');

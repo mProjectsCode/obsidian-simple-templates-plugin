@@ -13,11 +13,28 @@ class MockFuzzySuggestModal {
 	onClose(): void {}
 }
 
-mock.module('obsidian', () => ({ FuzzySuggestModal: MockFuzzySuggestModal, TFile: MockTFile }));
+class MockModal {
+	contentEl = { empty: () => undefined };
+	open(): void {}
+	close(): void {
+		this.onClose();
+	}
+	onClose(): void {}
+}
+
+class MockSettingGroup {}
+
+void mock.module('obsidian', () => ({
+	FuzzySuggestModal: MockFuzzySuggestModal,
+	Modal: MockModal,
+	SettingGroup: MockSettingGroup,
+	TFile: MockTFile,
+}));
 
 const { TemplateRegistry } = await import('packages/obsidian/src/templates/TemplateRegistry');
 const { FilePickerModal } = await import('packages/obsidian/src/modals/FilePickerModal');
 const { TemplatePickerModal } = await import('packages/obsidian/src/modals/TemplatePickerModal');
+const { VariableInputModal } = await import('packages/obsidian/src/modals/VariableInputModal');
 
 describe('picker modals', () => {
 	test('returns a template when Obsidian closes before reporting the selection', async () => {
@@ -43,6 +60,19 @@ describe('picker modals', () => {
 		let choice = modal.choose();
 		modal.onClose();
 		expect(await choice).toBeNull();
+	});
+});
+
+describe('variable input modal', () => {
+	test('does not submit defaults for hidden source or formula variables', async () => {
+		let modal = new VariableInputModal({} as never, {
+			title: { type: 'text' },
+			fromContext: { type: 'special', source: 'activeFile.basename', default: 'hidden default' },
+			fromFormula: { type: 'text', formula: 'upper(title)', default: 'hidden formula default' },
+		});
+		let collected = modal.collect();
+		(modal as unknown as { submit(): void }).submit();
+		expect(await collected).toEqual({});
 	});
 });
 

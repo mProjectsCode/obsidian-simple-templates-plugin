@@ -1,4 +1,4 @@
-import { formatLocalDate, SpecialVariableRegistry } from 'packages/core/src/index';
+import { FormulaEvaluator, SpecialVariableRegistry } from 'packages/core/src/index';
 import type { ExecutionContext, FormulaRuntime } from 'packages/core/src/index';
 
 export type ObsidianContextRequirement = 'activeFileContent' | 'editorSelection' | 'clipboard';
@@ -59,7 +59,8 @@ export function createObsidianSpecialVariableRegistry(): ObsidianSpecialVariable
 		})
 		.register('date.today', {
 			label: 'Today',
-			resolve: (_context: ExecutionContext, runtime?: FormulaRuntime) => formatLocalDate(runtime?.now() ?? new Date()),
+			resolve: (_context: ExecutionContext, runtime?: FormulaRuntime) =>
+				FormulaEvaluator.formatLocalDate(runtime?.now() ?? new Date()),
 		})
 		.register('date.now', {
 			label: 'Current date and time',

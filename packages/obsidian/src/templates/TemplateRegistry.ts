@@ -1,5 +1,5 @@
+import { OutputPathResolver, TemplateParser } from 'packages/core/src/index';
 import type { SpecialVariableRegistry, TemplateDefinition, ValidationIssue } from 'packages/core/src/index';
-import { normalizeVaultFolder, parseTemplate } from 'packages/core/src/index';
 import { TFile } from 'obsidian';
 import type { Vault } from 'obsidian';
 
@@ -18,12 +18,16 @@ export interface TemplateValidationResult {
 export class TemplateRegistry {
 	private results: TemplateValidationResult[] = [];
 	private refreshTail: Promise<void> = Promise.resolve();
+	private readonly parser: TemplateParser;
+	private readonly paths = new OutputPathResolver();
 
 	constructor(
 		private readonly vault: Vault,
 		private readonly getFolder: () => string,
-		private readonly specialVariables: SpecialVariableRegistry<unknown>,
-	) {}
+		specialVariables: SpecialVariableRegistry<unknown>,
+	) {
+		this.parser = new TemplateParser(specialVariables);
+	}
 
 	/**
 	 * Queues a full refresh. Promise chaining ensures concurrent calls run
@@ -40,7 +44,7 @@ export class TemplateRegistry {
 		let configuredFolder = this.getFolder();
 		let folder: string;
 		try {
-			folder = normalizeVaultFolder(configuredFolder);
+			folder = this.paths.normalizeFolder(configuredFolder);
 		} catch (error) {
 			this.results = [
 				{
@@ -61,7 +65,7 @@ export class TemplateRegistry {
 
 	private async parseFile(file: TFile): Promise<TemplateValidationResult> {
 		try {
-			let parsed = parseTemplate(file.path, await this.vault.cachedRead(file), this.specialVariables);
+			let parsed = this.parser.parse(file.path, await this.vault.cachedRead(file));
 			return { path: file.path, template: parsed.template, issues: parsed.issues };
 		} catch (error) {
 			return {

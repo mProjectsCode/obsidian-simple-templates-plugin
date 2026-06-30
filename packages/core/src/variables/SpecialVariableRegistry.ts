@@ -1,5 +1,5 @@
-import type { FormulaRuntime } from 'packages/core/src/formulas';
-import type { ExecutionContext } from 'packages/core/src/types';
+import type { FormulaRuntime } from 'packages/core/src/formulas/FormulaEvaluator';
+import type { ExecutionContext } from 'packages/core/src/domain/Types';
 
 export interface SpecialVariableDefinition<Metadata = undefined> {
 	label: string;

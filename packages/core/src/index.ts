@@ -1,14 +1,16 @@
 /** Core library barrel – re-exports every public symbol so consumers can import
  *  from a single entry point. */
 
-export * from 'packages/core/src/errors';
-export * from 'packages/core/src/execution';
-export * from 'packages/core/src/formulas';
-export * from 'packages/core/src/frontmatter';
-export * from 'packages/core/src/parser';
-export * from 'packages/core/src/paths';
-export * from 'packages/core/src/renderer';
-export * from 'packages/core/src/specialVariables';
-export * from 'packages/core/src/types';
-export * from 'packages/core/src/validation';
-export * from 'packages/core/src/variables';
+export * from 'packages/core/src/domain/Errors';
+export * from 'packages/core/src/domain/TemplateAst';
+export * from 'packages/core/src/domain/Types';
+export * from 'packages/core/src/formulas/FormulaEvaluator';
+export * from 'packages/core/src/frontmatter/FrontmatterService';
+export * from 'packages/core/src/output/OutputPathResolver';
+export * from 'packages/core/src/templates/TemplateEngine';
+export * from 'packages/core/src/templates/TemplateParser';
+export * from 'packages/core/src/templates/TemplateProgramParser';
+export * from 'packages/core/src/templates/TemplateRenderer';
+export * from 'packages/core/src/templates/TemplateValidator';
+export * from 'packages/core/src/variables/SpecialVariableRegistry';
+export * from 'packages/core/src/variables/VariableResolver';

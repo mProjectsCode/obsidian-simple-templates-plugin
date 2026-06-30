@@ -1,5 +1,5 @@
+import { VariableResolver } from 'packages/core/src/index';
 import type { ResolvedVariables, VariableDefinition } from 'packages/core/src/index';
-import { variablesNeedingInput } from 'packages/core/src/index';
 import type { App } from 'obsidian';
 import { Modal, SettingGroup } from 'obsidian';
 import type { Setting } from 'obsidian';
@@ -31,11 +31,18 @@ export class VariableInputModal extends Modal {
 		initialValues: ResolvedVariables = {},
 	) {
 		super(app);
-		this.inputNames = variablesNeedingInput(definitions);
+		this.inputNames = VariableResolver.needingInput(definitions);
 
-		Object.assign(this.values, structuredClone(initialValues));
-		for (let [name, definition] of Object.entries(definitions))
-			if (!(name in this.values) && definition.default !== undefined) this.values[name] = structuredClone(definition.default);
+		// Only return values represented by controls in this modal. Seeding hidden
+		// source/formula variables would make them look user-provided and could
+		// override values resolved by the execution engine.
+		for (let name of this.inputNames) {
+			if (Object.hasOwn(initialValues, name)) this.values[name] = structuredClone(initialValues[name]);
+			else {
+				let defaultValue = definitions[name]?.default;
+				if (defaultValue !== undefined) this.values[name] = structuredClone(defaultValue);
+			}
+		}
 	}
 
 	/**

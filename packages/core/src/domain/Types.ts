@@ -1,3 +1,5 @@
+import type { TemplateAst } from 'packages/core/src/domain/TemplateAst';
+
 /** Primitive types a template variable can hold. */
 export type VariableType = 'text' | 'textarea' | 'number' | 'boolean' | 'date' | 'datetime' | 'select' | 'multiselect' | 'list' | 'special';
 
@@ -66,6 +68,8 @@ export interface TemplateDefinition extends TemplateIdentity {
 	outputFrontmatterTemplate?: string;
 	rawFrontmatter: string | null;
 	parsedFrontmatter: Record<string, unknown>;
+	/** Precompiled templating sections. Optional for hand-built definitions. */
+	ast?: TemplateAst;
 }
 
 /**

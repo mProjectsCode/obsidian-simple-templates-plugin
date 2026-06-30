@@ -40,4 +40,14 @@ export default defineConfig(
 			'no-relative-import-paths/no-relative-import-paths': ['warn', { allowSameFolder: false }],
 		},
 	},
+	{
+		files: ['packages/**/tests/**/*.ts'],
+		languageOptions: {
+			globals: { Bun: 'readonly' },
+		},
+		rules: {
+			'@typescript-eslint/no-empty-function': 'off',
+			'no-relative-import-paths/no-relative-import-paths': 'off',
+		},
+	},
 );
