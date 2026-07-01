@@ -1,5 +1,5 @@
-import { FormulaEvaluator, SpecialVariableRegistry } from 'packages/core/src/index';
-import type { ExecutionContext, FormulaRuntime } from 'packages/core/src/index';
+import { SpecialVariableRegistry } from 'packages/core/src/index';
+import type { ExecutionContext } from 'packages/core/src/index';
 
 export type ObsidianContextRequirement = 'activeFileContent' | 'editorSelection' | 'clipboard';
 export type ObsidianSpecialVariableRegistry = SpecialVariableRegistry<{ requiredContext?: ObsidianContextRequirement }>;
@@ -16,6 +16,13 @@ export interface ObsidianExecutionContext extends ExecutionContext {
 
 function obsidianContext(context: ExecutionContext): ObsidianExecutionContext {
 	return context as ObsidianExecutionContext;
+}
+
+function formatLocalDate(date: Date): string {
+	let year = date.getFullYear().toString().padStart(4, '0');
+	let month = (date.getMonth() + 1).toString().padStart(2, '0');
+	let day = date.getDate().toString().padStart(2, '0');
+	return `${year}-${month}-${day}`;
 }
 
 /** Creates the core registry and installs every source provided by Obsidian. */
@@ -59,12 +66,11 @@ export function createObsidianSpecialVariableRegistry(): ObsidianSpecialVariable
 		})
 		.register('date.today', {
 			label: 'Today',
-			resolve: (_context: ExecutionContext, runtime?: FormulaRuntime) =>
-				FormulaEvaluator.formatLocalDate(runtime?.now() ?? new Date()),
+			resolve: () => formatLocalDate(new Date()),
 		})
 		.register('date.now', {
 			label: 'Current date and time',
-			resolve: (_context: ExecutionContext, runtime?: FormulaRuntime) => (runtime?.now() ?? new Date()).toISOString(),
+			resolve: () => new Date().toISOString(),
 		})
 		.register('clipboard', {
 			label: 'Clipboard',

@@ -6,7 +6,6 @@ import type {
 	VariableType,
 } from 'packages/core/src/domain/Types';
 import { VARIABLE_TYPES } from 'packages/core/src/domain/Types';
-import { FormulaEvaluator } from 'packages/core/src/formulas/FormulaEvaluator';
 import { TemplateRenderer } from 'packages/core/src/templates/TemplateRenderer';
 import type { SpecialVariableRegistry } from 'packages/core/src/variables/SpecialVariableRegistry';
 
@@ -16,7 +15,6 @@ const VARIABLE_TYPE_SET = new Set<VariableType>(VARIABLE_TYPES);
 export class TemplateValidator {
 	constructor(
 		private readonly specialVariables: SpecialVariableRegistry<unknown>,
-		private readonly formulas = new FormulaEvaluator(),
 		private readonly renderer = new TemplateRenderer(),
 	) {}
 
@@ -59,81 +57,13 @@ export class TemplateValidator {
 		return issues;
 	}
 
-	/**
-	 * Builds a dependency map from formula variables, producing issues for
-	 * undeclared references and detecting circular dependencies.
-	 */
-	private validateFormulaDependencies(variables: Record<string, VariableDefinition>): ValidationIssue[] {
-		let issues: ValidationIssue[] = [];
-
-		// Build a map: formula variable name → list of other formula variables it depends on
-		let dependencyMap = new Map<string, string[]>();
-		for (let [name, definition] of Object.entries(variables)) {
-			if (!definition.formula) continue;
-			try {
-				let formulaDependencies = this.formulas.dependencies(definition.formula);
-				dependencyMap.set(
-					name,
-					formulaDependencies.filter(dependency => variables[dependency]?.formula),
-				);
-				for (let dependency of formulaDependencies)
-					if (!(dependency in variables))
-						issues.push({
-							severity: 'error',
-							path: `variables.${name}.formula`,
-							message: `Formula for "${name}" references undeclared variable "${dependency}".`,
-						});
-			} catch (error) {
-				issues.push({
-					severity: 'error',
-					path: `variables.${name}.formula`,
-					message: error instanceof Error ? error.message : String(error),
-				});
-			}
-		}
-
-		// Detect cycles using a standard DFS approach
-		this.detectCycles(dependencyMap, issues);
-
-		return issues;
-	}
-
-	/** Detects circular dependencies in the formula graph and adds an error issue
-	 *  for the first cycle found. */
-	private detectCycles(dependencyMap: Map<string, string[]>, issues: ValidationIssue[]): void {
-		let visiting = new Set<string>();
-		let visited = new Set<string>();
-
-		for (let name of dependencyMap.keys())
-			if (this.hasCycle(name, dependencyMap, visiting, visited)) {
-				issues.push({
-					severity: 'error',
-					path: `variables.${name}.formula`,
-					message: `Formula for "${name}" has a circular dependency.`,
-				});
-				break;
-			}
-	}
-
-	private hasCycle(name: string, dependencyMap: Map<string, string[]>, visiting: Set<string>, visited: Set<string>): boolean {
-		if (visiting.has(name)) return true;
-		if (visited.has(name)) return false;
-		visiting.add(name);
-		let found = (dependencyMap.get(name) ?? []).some(dependency => this.hasCycle(dependency, dependencyMap, visiting, visited));
-		visiting.delete(name);
-		visited.add(name);
-		return found;
-	}
-
-	/** Validates every variable definition and their formula dependency graph. */
+	/** Validates every variable definition. Expressions are validated by Safe JS when executed. */
 	private validateVariableDefinitions(variables: Record<string, VariableDefinition>): ValidationIssue[] {
 		let issues: ValidationIssue[] = [];
 
 		for (let [name, definition] of Object.entries(variables)) {
 			issues.push(...this.validateVariableDefinition(name, definition));
 		}
-
-		issues.push(...this.validateFormulaDependencies(variables));
 
 		return issues;
 	}

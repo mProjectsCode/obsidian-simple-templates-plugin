@@ -1,10 +1,9 @@
-import type { FormulaRuntime } from 'packages/core/src/formulas/FormulaEvaluator';
 import type { ExecutionContext } from 'packages/core/src/domain/Types';
 
 export interface SpecialVariableDefinition<Metadata = undefined> {
 	label: string;
 	metadata?: Metadata;
-	resolve(context: ExecutionContext, runtime?: FormulaRuntime): unknown;
+	resolve(context: ExecutionContext): unknown;
 }
 
 /** Host-populated registry of context-backed template variables. */
@@ -33,9 +32,9 @@ export class SpecialVariableRegistry<Metadata = undefined> {
 		return this.entries();
 	}
 
-	resolve(source: string, context: ExecutionContext, runtime?: FormulaRuntime): unknown {
+	resolve(source: string, context: ExecutionContext): unknown {
 		let definition = this.definitions.get(source);
 		if (!definition) throw new Error(`Special variable source "${source}" is not registered.`);
-		return definition.resolve(context, runtime);
+		return definition.resolve(context);
 	}
 }

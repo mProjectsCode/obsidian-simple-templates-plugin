@@ -1,5 +1,5 @@
 import type { ExecutionContext, RenderedNote, ResolvedVariables, TemplateDefinition } from 'packages/core/src/domain/Types';
-import type { FormulaRuntime } from 'packages/core/src/formulas/FormulaEvaluator';
+import type { ExpressionEvaluator } from 'packages/core/src/expressions/ExpressionEvaluator';
 import { FrontmatterService } from 'packages/core/src/frontmatter/FrontmatterService';
 import { OutputPathResolver } from 'packages/core/src/output/OutputPathResolver';
 import { TemplateProgramParser } from 'packages/core/src/templates/TemplateProgramParser';
@@ -10,7 +10,7 @@ import { VariableResolver } from 'packages/core/src/variables/VariableResolver';
 /**
  * The top-level render pipeline for a single template.
  *
- * 1. Resolves all variable values (user-provided, formula-based, context-driven).
+ * 1. Resolves all variable values (user-provided, expression-based, context-driven).
  * 2. Renders the template body and optional output-frontmatter template.
  * 3. Decides the final output folder and filename.
  *
@@ -21,22 +21,22 @@ export class TemplateEngine {
 
 	constructor(
 		specialVariables: SpecialVariableRegistry<unknown>,
-		runtime?: FormulaRuntime,
+		expressions: ExpressionEvaluator,
 		private readonly frontmatter = new FrontmatterService(),
 		private readonly paths = new OutputPathResolver(),
 		private readonly programParser = new TemplateProgramParser(),
 		private readonly renderer = new TemplateRenderer(programParser),
 	) {
-		this.variables = new VariableResolver(specialVariables, runtime);
+		this.variables = new VariableResolver(specialVariables, expressions);
 	}
 
-	render(
+	async render(
 		template: TemplateDefinition,
 		context: ExecutionContext,
 		userValues: ResolvedVariables,
 		defaultOutputFolderPath: string,
-	): RenderedNote & { values: ResolvedVariables; usedFolderFallback: boolean } {
-		let values = this.variables.resolve(template.variables, context, userValues);
+	): Promise<RenderedNote & { values: ResolvedVariables; usedFolderFallback: boolean }> {
+		let values = await this.variables.resolve(template.variables, context, userValues, template.sourcePath);
 		let declared = new Set(Object.keys(template.variables));
 		let ast =
 			template.ast ??

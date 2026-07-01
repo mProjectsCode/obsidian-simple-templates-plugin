@@ -245,15 +245,18 @@ export class TemplateMetadataEditorModal extends Modal {
 				);
 		});
 
-		// Formula
+		// Safe JS expression
 		group.addSetting(setting => {
-			setting.setName('Formula').addText(text =>
-				text.setValue(definition.formula ?? '').onChange(value => {
-					if (value) definition.formula = value;
-					else delete definition.formula;
-					this.updatePreview();
-				}),
-			);
+			setting
+				.setName('Expression')
+				.setDesc('Evaluated with earlier variables as inputs')
+				.addText(text =>
+					text.setValue(definition.formula ?? '').onChange(value => {
+						if (value) definition.formula = value;
+						else delete definition.formula;
+						this.updatePreview();
+					}),
+				);
 		});
 
 		// Special source

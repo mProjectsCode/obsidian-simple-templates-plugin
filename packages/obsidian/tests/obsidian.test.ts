@@ -1,7 +1,35 @@
 import { describe, expect, mock, test } from 'bun:test';
+import { FormulaError } from 'packages/core/src/index';
+import { SafeJsExpressionEvaluator } from 'packages/obsidian/src/expressions/SafeJsExpressionEvaluator';
 import { createEditableTemplateMetadata, mergeEditableTemplateMetadata } from 'packages/obsidian/src/modals/TemplateMetadataState';
 import { pathAffectsTemplateRegistry } from 'packages/obsidian/src/templates/RegistryPaths';
 import { createObsidianSpecialVariableRegistry, getRequiredObsidianContext } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
+import type { SafeJsExecutionResult, SafeJsExpressionOptions } from '@lemons_dev/obsidian-safe-js-api';
+
+class MockSafeJsExpressionApi {
+	readonly calls: { expression: string; options: SafeJsExpressionOptions }[] = [];
+	result: SafeJsExecutionResult = {
+		status: 'success',
+		codeHash: 'test-hash',
+		value: 'evaluated',
+		permissions: [],
+		elapsedMs: 0,
+	};
+
+	async executeExpression(expression: string, options: SafeJsExpressionOptions = {}): Promise<SafeJsExecutionResult> {
+		this.calls.push({ expression, options });
+		return this.result;
+	}
+}
+
+async function rejected(promise: Promise<unknown>): Promise<Error> {
+	try {
+		await promise;
+	} catch (error) {
+		return error instanceof Error ? error : new Error(String(error));
+	}
+	throw new Error('Expected the promise to reject.');
+}
 
 class MockTFile {
 	constructor(readonly path: string) {}
@@ -36,6 +64,33 @@ const { FilePickerModal } = await import('packages/obsidian/src/modals/FilePicke
 const { TemplatePickerModal } = await import('packages/obsidian/src/modals/TemplatePickerModal');
 const { VariableInputModal } = await import('packages/obsidian/src/modals/VariableInputModal');
 
+describe('Safe JS expression adapter', () => {
+	test('maps the core contract to JSON-safe Safe JS expression calls', async () => {
+		let api = new MockSafeJsExpressionApi();
+		let evaluator = new SafeJsExpressionEvaluator(api);
+		expect(await evaluator.evaluate('title.toUpperCase()', { title: 'Note', missing: undefined }, 'Templates/note.md')).toBe(
+			'evaluated',
+		);
+		expect(api.calls[0]).toEqual({
+			expression: 'title.toUpperCase()',
+			options: {
+				inputs: { title: 'Note', missing: null },
+				permissions: [],
+				source: { path: 'Templates/note.md' },
+			},
+		});
+
+		api.result = {
+			status: 'runtime-error',
+			codeHash: 'test-hash',
+			message: 'failed',
+			permissions: [],
+			elapsedMs: 0,
+		};
+		expect(await rejected(evaluator.evaluate('broken()', {}))).toBeInstanceOf(FormulaError);
+	});
+});
+
 describe('picker modals', () => {
 	test('returns a template when Obsidian closes before reporting the selection', async () => {
 		let template = { id: 'template', name: 'Template' };
@@ -68,7 +123,7 @@ describe('variable input modal', () => {
 		let modal = new VariableInputModal({} as never, {
 			title: { type: 'text' },
 			fromContext: { type: 'special', source: 'activeFile.basename', default: 'hidden default' },
-			fromFormula: { type: 'text', formula: 'upper(title)', default: 'hidden formula default' },
+			fromFormula: { type: 'text', formula: 'title.toUpperCase()', default: 'hidden formula default' },
 		});
 		let collected = modal.collect();
 		(modal as unknown as { submit(): void }).submit();

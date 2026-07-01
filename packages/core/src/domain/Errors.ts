@@ -4,7 +4,7 @@ export class TemplateParseError extends Error {}
 export class TemplateValidationError extends Error {}
 /** Thrown when a variable value cannot be resolved. */
 export class VariableResolutionError extends Error {}
-/** Thrown when a formula expression fails to parse or evaluate. */
+/** Thrown when a formula's Safe JS expression fails to evaluate. */
 export class FormulaError extends Error {}
 /** Thrown when a required variable has no value at render time. */
 export class MissingRequiredVariableError extends Error {}

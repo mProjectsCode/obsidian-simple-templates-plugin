@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
 	FileConflictError,
-	FormulaEvaluator,
+	ExpressionEvaluator,
 	FormulaError,
 	FrontmatterService,
 	MissingRequiredVariableError,
@@ -14,7 +14,7 @@ import {
 	VariableResolver,
 	SpecialVariableRegistry,
 } from 'packages/core/src/index';
-import type { ExecutionContext, FormulaRuntime, ResolvedVariables, TemplateDefinition, VariableDefinition } from 'packages/core/src/index';
+import type { ExecutionContext, ResolvedVariables, TemplateDefinition, VariableDefinition } from 'packages/core/src/index';
 
 const CONTEXT: ExecutionContext = {
 	activeFilePath: 'Projects/Source.md',
@@ -23,7 +23,6 @@ const CONTEXT: ExecutionContext = {
 	activeFileFrontmatter: { status: 'active' },
 	cursor: { line: 3, ch: 4 },
 };
-const RUNTIME = { now: () => new Date('2026-06-29T12:34:56.000Z'), uuid: () => 'fixed-uuid' };
 const SPECIAL_VARIABLES = new SpecialVariableRegistry()
 	.register('host.basename', {
 		label: 'Host basename',
@@ -38,20 +37,48 @@ const PROGRAM_PARSER = new TemplateProgramParser();
 const TEMPLATE_RENDERER = new TemplateRenderer(PROGRAM_PARSER);
 const FRONTMATTER = new FrontmatterService();
 const PATHS = new OutputPathResolver(TEMPLATE_RENDERER);
-const FORMULAS = new FormulaEvaluator();
-const DETERMINISTIC_FORMULAS = new FormulaEvaluator(RUNTIME);
+
+class MockExpressionEvaluator extends ExpressionEvaluator {
+	readonly calls: { expression: string; values: ResolvedVariables; sourcePath?: string }[] = [];
+
+	override async evaluate(expression: string, values: ResolvedVariables, sourcePath?: string): Promise<unknown> {
+		this.calls.push({ expression, values: structuredClone(values), ...(sourcePath ? { sourcePath } : {}) });
+		switch (expression) {
+			case 'title.toLowerCase().replaceAll(" ", "-")':
+				return this.stringInput(values, 'title').toLowerCase().replaceAll(' ', '-');
+			case 'slug.toUpperCase()':
+				return this.stringInput(values, 'slug').toUpperCase();
+			case 'base?.toUpperCase() ?? ""':
+				return values.base === undefined ? '' : this.stringInput(values, 'base').toUpperCase();
+			default:
+				throw new FormulaError(`Unknown test expression: ${expression}`);
+		}
+	}
+
+	private stringInput(inputs: ResolvedVariables, name: string): string {
+		let value = inputs[name];
+		if (typeof value !== 'string') throw new Error(`Expected string input: ${name}`);
+		return value;
+	}
+}
+
+const EXPRESSIONS = new MockExpressionEvaluator();
+
+async function rejected(promise: Promise<unknown>): Promise<Error> {
+	try {
+		await promise;
+	} catch (error) {
+		return error instanceof Error ? error : new Error(String(error));
+	}
+	throw new Error('Expected the promise to reject.');
+}
 
 function parseTemplate(sourcePath: string, content: string) {
 	return TEMPLATE_PARSER.parse(sourcePath, content);
 }
 
-function resolveVariables(
-	definitions: Record<string, VariableDefinition>,
-	context: ExecutionContext,
-	userValues: ResolvedVariables,
-	runtime?: FormulaRuntime,
-) {
-	return new VariableResolver(SPECIAL_VARIABLES, runtime).resolve(definitions, context, userValues);
+function resolveVariables(definitions: Record<string, VariableDefinition>, context: ExecutionContext, userValues: ResolvedVariables) {
+	return new VariableResolver(SPECIAL_VARIABLES, EXPRESSIONS).resolve(definitions, context, userValues);
 }
 
 function renderNote(
@@ -59,9 +86,8 @@ function renderNote(
 	context: ExecutionContext,
 	userValues: ResolvedVariables,
 	defaultOutputFolderPath: string,
-	runtime?: FormulaRuntime,
 ) {
-	return new TemplateEngine(SPECIAL_VARIABLES, runtime).render(template, context, userValues, defaultOutputFolderPath);
+	return new TemplateEngine(SPECIAL_VARIABLES, EXPRESSIONS).render(template, context, userValues, defaultOutputFolderPath);
 }
 
 describe('template parser', () => {
@@ -74,7 +100,7 @@ variables:
     type: text
   slug:
     type: text
-    formula: slug(title)
+    formula: title.toLowerCase().replaceAll(" ", "-")
 output:
   filename: "{{ slug }}"
 custom: keep
@@ -139,15 +165,15 @@ title: "{{ title }}"
 		expect(parseTemplate('plain.md', content).issues.some(issue => issue.message.includes('frontmatter is missing'))).toBeTrue();
 	});
 
-	test('validates metadata shapes and formula graphs before execution', () => {
+	test('validates metadata shapes while deferring expressions to Safe JS', () => {
 		let result = parseTemplate(
 			'bad.md',
 			`---
 template: { id: bad, name: 12, tags: nope }
 variables:
   broken: nope
-  a: { type: text, formula: lower(b) }
-  b: { type: text, formula: lower(a) }
+  a: { type: text, formula: b.toLowerCase() }
+  b: { type: text, formula: a.toLowerCase() }
 output: { openAfterCreate: yes }
 ---
 body`,
@@ -156,7 +182,7 @@ body`,
 		expect(messages).toContain('Template name must be a string.');
 		expect(messages).toContain('Template tags must be a list of strings.');
 		expect(messages).toContain('Variable "broken" must be a mapping.');
-		expect(messages.some(message => message.includes('circular dependency'))).toBeTrue();
+		expect(messages.some(message => message.includes('circular dependency'))).toBeFalse();
 		expect(messages).toContain('Open after create must be true or false.');
 	});
 
@@ -171,7 +197,7 @@ body`,
 	});
 });
 
-describe('renderer and formulas', () => {
+describe('renderer and expressions', () => {
 	test('builds a source-located AST and renders nested conditionals', () => {
 		let program = PROGRAM_PARSER.parse('Hi {{ user.name }}{{#if enabled}}!{{#if extra}}+{{ extra }}{{/if}}{{/if}}');
 		expect(program.references).toEqual(['user', 'enabled', 'extra']);
@@ -201,33 +227,30 @@ describe('renderer and formulas', () => {
 		expect(() => TEMPLATE_RENDERER.render('{{ unknown }}', {}, new Set())).toThrow(TemplateValidationError);
 	});
 
-	test('evaluates every safe built-in', () => {
-		expect(DETERMINISTIC_FORMULAS.evaluate('today()', {})).toBe('2026-06-29');
-		expect(DETERMINISTIC_FORMULAS.evaluate('now()', {})).toBe('2026-06-29T12:34:56.000Z');
-		expect(DETERMINISTIC_FORMULAS.evaluate('uuid()', {})).toBe('fixed-uuid');
-		expect(DETERMINISTIC_FORMULAS.evaluate('slug(title)', { title: ' Héllo, World! ' })).toBe('hello-world');
-		expect(FORMULAS.evaluate('lower(title)', { title: 'ABC' })).toBe('abc');
-		expect(FORMULAS.evaluate('upper(title)', { title: 'abc' })).toBe('ABC');
-		expect(FORMULAS.evaluate('trim(title)', { title: ' x ' })).toBe('x');
-		expect(FORMULAS.evaluate(`replace(title, "a", 'b')`, { title: 'a cat' })).toBe('b cbt');
-		expect(() => FORMULAS.evaluate('eval(code)', { code: 'x' })).toThrow(FormulaError);
-		expect(() => FORMULAS.evaluate('slug()', {})).toThrow('expects 1 argument');
-	});
-
-	test('uses the local calendar date for today', () => {
-		let localDate = {
-			getFullYear: () => 2026,
-			getMonth: () => 5,
-			getDate: () => 30,
-			toISOString: () => '2026-06-29T22:30:00.000Z',
-		} as Date;
-		expect(new FormulaEvaluator({ now: () => localDate, uuid: () => 'unused' }).evaluate('today()', {})).toBe('2026-06-30');
+	test('delegates expressions and source context through the core abstraction', async () => {
+		let evaluator = new MockExpressionEvaluator();
+		let values = await new VariableResolver(SPECIAL_VARIABLES, evaluator).resolve(
+			{
+				title: { type: 'text' },
+				slug: { type: 'text', formula: 'title.toLowerCase().replaceAll(" ", "-")' },
+			},
+			CONTEXT,
+			{ title: 'My Note' },
+			'x.md',
+		);
+		expect(values.slug).toBe('my-note');
+		expect(evaluator.calls[0]).toEqual({
+			expression: 'title.toLowerCase().replaceAll(" ", "-")',
+			values: { title: 'My Note' },
+			sourcePath: 'x.md',
+		});
+		expect(await rejected(evaluator.evaluate('unknown()', {}))).toBeInstanceOf(FormulaError);
 	});
 });
 
 describe('variable resolution', () => {
-	test('resolves host-registered special variables', () => {
-		let values = resolveVariables(
+	test('resolves host-registered special variables', async () => {
+		let values = await resolveVariables(
 			{ value: { type: 'special', source: 'test.value' } },
 			{ ...CONTEXT, activeFileContent: 'content' },
 			{},
@@ -238,16 +261,16 @@ describe('variable resolution', () => {
 		expect(() => SPECIAL_VARIABLES.register('test.value', { label: 'Duplicate', resolve: () => null })).toThrow('already registered');
 	});
 
-	test('resolves context, user input, dependent formulas, defaults, and types', () => {
+	test('resolves context, user input, ordered expressions, defaults, and types', async () => {
 		let definitions = {
 			file: { type: 'special' as const, source: 'host.basename' as const },
 			title: { type: 'text' as const, required: true },
-			slug: { type: 'text' as const, formula: 'slug(title)' },
-			loud: { type: 'text' as const, formula: 'upper(slug)' },
+			slug: { type: 'text' as const, formula: 'title.toLowerCase().replaceAll(" ", "-")' },
+			loud: { type: 'text' as const, formula: 'slug.toUpperCase()' },
 			count: { type: 'number' as const, default: '2' },
 		};
 		expect(VariableResolver.needingInput(definitions)).toEqual(['title', 'count']);
-		expect(resolveVariables(definitions, CONTEXT, { title: 'My Note' }, RUNTIME)).toEqual({
+		expect(await resolveVariables(definitions, CONTEXT, { title: 'My Note' })).toEqual({
 			file: 'Source',
 			title: 'My Note',
 			slug: 'my-note',
@@ -256,23 +279,30 @@ describe('variable resolution', () => {
 		});
 	});
 
-	test('lets formulas consume omitted optional inputs as empty values', () => {
-		expect(resolveVariables({ base: { type: 'text' }, derived: { type: 'text', formula: 'upper(base)' } }, CONTEXT, {}).derived).toBe(
-			'',
-		);
+	test('lets expressions handle omitted optional inputs', async () => {
+		expect(
+			(
+				await resolveVariables(
+					{ base: { type: 'text' }, derived: { type: 'text', formula: 'base?.toUpperCase() ?? ""' } },
+					CONTEXT,
+					{},
+				)
+			).derived,
+		).toBe('');
 	});
 
-	test('detects missing required values and formula cycles', () => {
-		expect(() => resolveVariables({ title: { type: 'text', required: true } }, CONTEXT, {})).toThrow(MissingRequiredVariableError);
-		expect(() =>
-			resolveVariables({ a: { type: 'text', formula: 'lower(b)' }, b: { type: 'text', formula: 'lower(a)' } }, CONTEXT, {}),
-		).toThrow(FormulaError);
+	test('detects missing required values and expression failures', async () => {
+		expect(await rejected(resolveVariables({ title: { type: 'text', required: true } }, CONTEXT, {}))).toBeInstanceOf(
+			MissingRequiredVariableError,
+		);
+		expect(await rejected(resolveVariables({ a: { type: 'text', formula: 'unknown()' } }, CONTEXT, {}))).toBeInstanceOf(FormulaError);
 	});
 
-	test('rejects multiselect values outside configured options', () => {
-		expect(() => resolveVariables({ tags: { type: 'multiselect', options: ['one', 'two'] } }, CONTEXT, { tags: 'one\nthree' })).toThrow(
-			'outside its configured options',
-		);
+	test('rejects multiselect values outside configured options', async () => {
+		expect(
+			(await rejected(resolveVariables({ tags: { type: 'multiselect', options: ['one', 'two'] } }, CONTEXT, { tags: 'one\nthree' })))
+				.message,
+		).toContain('outside its configured options');
 	});
 });
 
@@ -290,7 +320,7 @@ describe('paths and conflicts', () => {
 		expect(() => PATHS.findAvailable('Notes/Name.md', 'cancel', path => existing.has(path))).toThrow(FileConflictError);
 	});
 
-	test('renders explicit and fallback folder modes and sanitizes filenames', () => {
+	test('renders explicit and fallback folder modes and sanitizes filenames', async () => {
 		let base: TemplateDefinition = {
 			id: 'x',
 			name: 'Default name',
@@ -301,13 +331,13 @@ describe('paths and conflicts', () => {
 			parsedFrontmatter: {},
 			output: { folder: { mode: 'path', path: 'Projects/{{ slug }}' }, filename: ' Bad: {{ slug }} ' },
 		};
-		expect(renderNote(base, CONTEXT, { slug: 'One' }, 'Default').folder).toBe('Projects/One');
-		expect(renderNote(base, CONTEXT, { slug: 'One' }, 'Default').filename).toBe('Bad- One.md');
+		expect((await renderNote(base, CONTEXT, { slug: 'One' }, 'Default')).folder).toBe('Projects/One');
+		expect((await renderNote(base, CONTEXT, { slug: 'One' }, 'Default')).filename).toBe('Bad- One.md');
 		base.output = { folder: { mode: 'same-as-active-file' } };
-		expect(renderNote(base, { ...CONTEXT, activeFileFolder: null }, {}, 'Fallback').usedFolderFallback).toBeTrue();
+		expect((await renderNote(base, { ...CONTEXT, activeFileFolder: null }, {}, 'Fallback')).usedFolderFallback).toBeTrue();
 	});
 
-	test('rejects invalid rendered output YAML', () => {
+	test('rejects invalid rendered output YAML', async () => {
 		let template: TemplateDefinition = {
 			id: 'x',
 			name: 'X',
@@ -318,7 +348,7 @@ describe('paths and conflicts', () => {
 			rawFrontmatter: '',
 			parsedFrontmatter: {},
 		};
-		expect(() => renderNote(template, CONTEXT, { value: 'x' }, '')).toThrow('Invalid rendered note frontmatter');
+		expect((await rejected(renderNote(template, CONTEXT, { value: 'x' }, ''))).message).toContain('Invalid rendered note frontmatter');
 	});
 });
 
@@ -339,14 +369,14 @@ describe('frontmatter editing and complete rendering', () => {
 		expect(parsed.body).toBe('Body\n```note-frontmatter\na: b\n```\n');
 	});
 
-	test('renders a note without copying template metadata', () => {
+	test('renders a note without copying template metadata', async () => {
 		let template = parseTemplate(
 			'Templates/p.md',
 			`---
 template: { id: p, name: Project }
 variables:
   title: { type: text, required: true }
-  slug: { type: text, formula: slug(title) }
+  slug: { type: text, formula: 'title.toLowerCase().replaceAll(" ", "-")' }
 output:
   folder: { mode: same-as-active-file }
   filename: "{{ slug }}"
@@ -360,7 +390,7 @@ title: "{{ title }}"
 # {{ title }}
 `,
 		).template!;
-		let rendered = renderNote(template, CONTEXT, { title: 'Example Project' }, 'Default', RUNTIME);
+		let rendered = await renderNote(template, CONTEXT, { title: 'Example Project' }, 'Default');
 		expect(rendered.folder).toBe('Projects');
 		expect(rendered.filename).toBe('example-project.md');
 		expect(rendered.content).toBe('---\ntitle: "Example Project"\n---\n\n# Example Project\n');

@@ -21,6 +21,7 @@
 	"license": "GPL-3.0",
 	"devDependencies": {
 		"@lemons_dev/lemons-obsidian-plugin-automation": "^0.1.3",
+		"@lemons_dev/obsidian-safe-js-api": "https://github.com/mProjectsCode/obsidian-safe-js-plugin/releases/download/0.2.0-canary.20260701T093235/obsidian-safe-js-api.tgz",
 		"@types/bun": "^1.3.14",
 		"eslint": "^9.39.4",
 		"eslint-plugin-no-relative-import-paths": "^1.6.1",

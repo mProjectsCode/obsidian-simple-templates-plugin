@@ -1,6 +1,8 @@
 # Simple Templates
 
-Simple Templates creates Markdown notes from reusable, variable-driven templates. Templates stay as ordinary Markdown files in your vault, and formulas run through a small safe engine without arbitrary JavaScript.
+Simple Templates creates Markdown notes from reusable, variable-driven templates. Templates stay as ordinary Markdown files in your vault, and formulas run as sandboxed expressions through the [Safe JS plugin](https://github.com/mProjectsCode/obsidian-safe-js-plugin).
+
+Install and enable Safe JS before creating notes from templates. Simple Templates passes template variable values to Safe JS as JSON-safe expression inputs and requests no permissions.
 
 ## Usage
 
@@ -21,7 +23,7 @@ variables:
         required: true
     slug:
         type: text
-        formula: slug(title)
+        formula: title.toLowerCase().replaceAll(" ", "-")
 output:
     folder:
         mode: default
@@ -38,6 +40,8 @@ status: active
 ````
 
 The metadata editor commands can edit existing Markdown files in the template folder while preserving unrelated frontmatter and the Markdown body.
+
+Formula fields contain Safe JS expressions. Variables are evaluated in their frontmatter declaration order, so an expression can use ordinary variables and formula variables declared above it. Safe JS also provides its permissionless expression utilities such as `today()`, `now()`, and `duration()`.
 
 ## Commands
 

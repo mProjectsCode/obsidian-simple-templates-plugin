@@ -1,23 +1,17 @@
 import { FormulaError, MissingRequiredVariableError, VariableResolutionError } from 'packages/core/src/domain/Errors';
 import type { ExecutionContext, ResolvedVariables, VariableDefinition } from 'packages/core/src/domain/Types';
-import { FormulaEvaluator } from 'packages/core/src/formulas/FormulaEvaluator';
-import type { FormulaRuntime } from 'packages/core/src/formulas/FormulaEvaluator';
+import type { ExpressionEvaluator } from 'packages/core/src/expressions/ExpressionEvaluator';
 import type { SpecialVariableRegistry } from 'packages/core/src/variables/SpecialVariableRegistry';
 
 /**
- * Resolves template variables through special sources, user input, formulas,
+ * Resolves template variables through special sources, user input, Safe JS expressions,
  * defaults, type coercion, and required-value checks.
  */
 export class VariableResolver {
-	private readonly formulas: FormulaEvaluator;
-
 	constructor(
 		private readonly specialVariables: SpecialVariableRegistry<unknown>,
-		private readonly runtime?: FormulaRuntime,
-		formulas?: FormulaEvaluator,
-	) {
-		this.formulas = formulas ?? new FormulaEvaluator(runtime);
-	}
+		private readonly expressions: ExpressionEvaluator,
+	) {}
 
 	static needingInput(definitions: Record<string, VariableDefinition>): string[] {
 		return Object.entries(definitions)
@@ -25,13 +19,17 @@ export class VariableResolver {
 			.map(([name]) => name);
 	}
 
-	resolve(definitions: Record<string, VariableDefinition>, context: ExecutionContext, userValues: ResolvedVariables): ResolvedVariables {
+	async resolve(
+		definitions: Record<string, VariableDefinition>,
+		context: ExecutionContext,
+		userValues: ResolvedVariables,
+		sourcePath?: string,
+	): Promise<ResolvedVariables> {
 		let values: ResolvedVariables = {};
 
 		// ---- 1. Populate from special sources ----
 		for (let [name, definition] of Object.entries(definitions)) {
-			if (definition.source && definition.ask !== true)
-				values[name] = this.specialVariables.resolve(definition.source, context, this.runtime);
+			if (definition.source && definition.ask !== true) values[name] = this.specialVariables.resolve(definition.source, context);
 		}
 
 		// ---- 2. Apply user-provided values (override specials) ----
@@ -45,12 +43,15 @@ export class VariableResolver {
 			if (!definition.formula && !definition.source && !(name in values)) values[name] = undefined;
 		}
 
-		// ---- 4. Resolve formula-based variables ----
-		this.resolveFormulas(definitions, userValues, values);
-
-		// ---- 5. Apply defaults, coerce, and check required ----
-		for (let [name, definition] of Object.entries(definitions)) {
+		// ---- 4. Apply defaults so expressions can consume them ----
+		for (let [name, definition] of Object.entries(definitions))
 			if (values[name] === undefined && definition.default !== undefined) values[name] = structuredClone(definition.default);
+
+		// ---- 5. Resolve Safe JS expressions in declaration order ----
+		await this.resolveFormulas(definitions, userValues, values, sourcePath);
+
+		// ---- 6. Coerce and check required ----
+		for (let [name, definition] of Object.entries(definitions)) {
 			values[name] = this.coerce(name, definition, values[name]);
 			if (definition.required && (values[name] === undefined || values[name] === null || values[name] === '')) {
 				throw new MissingRequiredVariableError(`Required variable "${name}" has no value.`);
@@ -60,31 +61,19 @@ export class VariableResolver {
 		return values;
 	}
 
-	private resolveFormulas(
+	private async resolveFormulas(
 		definitions: Record<string, VariableDefinition>,
 		userValues: ResolvedVariables,
 		values: ResolvedVariables,
-	): void {
-		let pending = new Set(
-			Object.entries(definitions)
-				.filter(([name, definition]) => definition.formula && !(definition.ask === true && Object.hasOwn(userValues, name)))
-				.map(([name]) => name),
-		);
-		while (pending.size > 0) {
-			let progressed = false;
-			for (let name of [...pending]) {
-				let formula = definitions[name]?.formula;
-				if (!formula) continue;
-				let dependencies = this.formulas.dependencies(formula);
-				let unknown = dependencies.find(dependency => !(dependency in definitions));
-				if (unknown) throw new FormulaError(`Formula for "${name}" references undeclared variable "${unknown}".`);
-				if (dependencies.every(dependency => dependency in values)) {
-					values[name] = this.formulas.evaluate(formula, values);
-					pending.delete(name);
-					progressed = true;
-				}
+		sourcePath?: string,
+	): Promise<void> {
+		for (let [name, definition] of Object.entries(definitions)) {
+			if (!definition.formula || (definition.ask === true && Object.hasOwn(userValues, name))) continue;
+			try {
+				values[name] = await this.expressions.evaluate(definition.formula, values, sourcePath);
+			} catch (error) {
+				throw new FormulaError(`Expression for "${name}" failed: ${error instanceof Error ? error.message : String(error)}`);
 			}
-			if (!progressed) throw new FormulaError(`Circular or unresolved formula dependencies: ${[...pending].join(', ')}.`);
 		}
 	}
 
