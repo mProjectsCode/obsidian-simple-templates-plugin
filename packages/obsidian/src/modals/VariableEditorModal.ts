@@ -1,5 +1,5 @@
-import { FrontmatterService, VARIABLE_TYPES } from 'packages/core/src/index';
-import type { VariableDefinition, VariableType } from 'packages/core/src/index';
+import { FrontmatterService, TemplateValidator, VARIABLE_INPUT_TYPES, VARIABLE_TYPES } from 'packages/core/src/index';
+import type { VariableDefinition, VariableInputType, VariableType } from 'packages/core/src/index';
 import type { ObsidianSpecialVariableRegistry } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
 import type { App } from 'obsidian';
 import { Modal, SettingGroup } from 'obsidian';
@@ -8,7 +8,9 @@ import { parse } from 'yaml';
 /** Edits one template variable in isolation and commits it when saved. */
 export class VariableEditorModal extends Modal {
 	private name: string;
-	private readonly definition: VariableDefinition;
+	private definition: VariableDefinition;
+	private readonly drafts = new Map<VariableType, VariableDefinition>();
+	private detailsEl: HTMLElement | null = null;
 	private errorEl: HTMLElement | null = null;
 	private readonly frontmatter = new FrontmatterService();
 
@@ -25,12 +27,14 @@ export class VariableEditorModal extends Modal {
 		this.modalEl.addClass('simple-templates-modal');
 		this.name = name;
 		this.definition = structuredClone(definition);
+		this.drafts.set(definition.type, this.definition);
 	}
 
 	override onOpen(): void {
 		this.setTitle(this.originalName === null ? 'Add variable' : `Edit variable — ${this.originalName}`);
-		let group = new SettingGroup(this.contentEl);
-		this.renderFields(group);
+		this.renderIdentity();
+		this.detailsEl = this.contentEl.createDiv();
+		this.renderDetails();
 
 		this.errorEl = this.contentEl.createDiv({ cls: 'mod-warning' });
 
@@ -50,128 +54,200 @@ export class VariableEditorModal extends Modal {
 		this.contentEl.empty();
 	}
 
-	private renderFields(group: SettingGroup): void {
+	private renderIdentity(): void {
+		let group = new SettingGroup(this.contentEl).setHeading('Variable');
 		group.addSetting(setting => {
-			setting.setName('Key').addText(text =>
-				text.setValue(this.name).onChange(value => {
-					this.name = value;
-					this.errorEl?.empty();
-				}),
-			);
-		});
-
-		group.addSetting(setting => {
-			setting.setName('Label').addText(text =>
-				text.setValue(this.definition.label ?? '').onChange(value => {
-					if (value) this.definition.label = value;
-					else delete this.definition.label;
-				}),
-			);
-		});
-
-		group.addSetting(setting => {
-			setting.setName('Description').addText(text =>
-				text.setValue(this.definition.description ?? '').onChange(value => {
-					if (value) this.definition.description = value;
-					else delete this.definition.description;
-				}),
-			);
-		});
-
-		group.addSetting(setting => {
-			setting.setName('Type').addDropdown(dropdown => {
-				for (let type of VARIABLE_TYPES) dropdown.addOption(type, type);
-				dropdown.setValue(this.definition.type).onChange(value => {
-					this.definition.type = value as VariableType;
-				});
-			});
-		});
-
-		group.addSetting(setting => {
-			setting.setName('Required').addToggle(toggle =>
-				toggle.setValue(this.definition.required ?? false).onChange(value => {
-					if (value) this.definition.required = true;
-					else delete this.definition.required;
-				}),
-			);
+			setting
+				.setName('Key')
+				.setDesc('Identifier used in template expressions, such as {{ projectName }}.')
+				.addText(text =>
+					text.setValue(this.name).onChange(value => {
+						this.name = value;
+						this.errorEl?.empty();
+					}),
+				);
 		});
 
 		group.addSetting(setting => {
 			setting
-				.setName('Default')
-				.setDesc('YAML scalar or collection')
+				.setName('Name')
+				.setDesc('Optional name shown when asking for a value.')
 				.addText(text =>
-					text
-						.setValue(
-							this.definition.default === undefined
-								? ''
-								: this.frontmatter
-										.serialize({ value: this.definition.default })
-										.replace(/^value:\s*/, '')
-										.trim(),
-						)
-						.onChange(value => {
-							if (!value.trim()) delete this.definition.default;
-							else {
-								try {
-									this.definition.default = parse(value) as unknown;
-								} catch {
-									this.definition.default = value;
-								}
-							}
-						}),
+					text.setValue(this.definition.label ?? '').onChange(value => {
+						this.setCommonField('label', value);
+					}),
 				);
 		});
 
+		group.addSetting(setting => {
+			setting
+				.setName('Description')
+				.setDesc('Optional guidance shown below the variable name.')
+				.addText(text =>
+					text.setValue(this.definition.description ?? '').onChange(value => {
+						this.setCommonField('description', value);
+					}),
+				);
+		});
+
+		group.addSetting(setting => {
+			setting
+				.setName('Type')
+				.setDesc('Choose whether the value is entered, supplied by Obsidian, or calculated.')
+				.addDropdown(dropdown => {
+					for (let type of VARIABLE_TYPES) dropdown.addOption(type, this.typeLabel(type));
+					dropdown.setValue(this.definition.type).onChange(value => this.changeType(value as VariableType));
+				});
+		});
+	}
+
+	private renderDetails(): void {
+		if (!this.detailsEl) return;
+		this.detailsEl.empty();
+		let group = new SettingGroup(this.detailsEl).setHeading(this.typeLabel(this.definition.type));
+		if (this.definition.type === 'input') this.renderInput(group, this.definition);
+		else if (this.definition.type === 'special') this.renderSpecial(group, this.definition);
+		else this.renderFormula(group, this.definition);
+	}
+
+	private renderInput(group: SettingGroup, definition: Extract<VariableDefinition, { type: 'input' }>): void {
+		group.addSetting(setting => {
+			setting
+				.setName('Input type')
+				.setDesc('Controls the field shown to the user and how its value is validated.')
+				.addDropdown(dropdown => {
+					for (let type of VARIABLE_INPUT_TYPES) dropdown.addOption(type, this.inputTypeLabel(type));
+					dropdown.setValue(definition.inputType).onChange(value => {
+						definition.inputType = value as VariableInputType;
+						if (definition.inputType !== 'select' && definition.inputType !== 'multiselect') delete definition.options;
+						this.renderDetails();
+					});
+				});
+		});
+
+		group.addSetting(setting => {
+			setting
+				.setName('Required')
+				.setDesc('Prevent note creation until the user enters a value.')
+				.addToggle(toggle =>
+					toggle.setValue(definition.required ?? false).onChange(value => {
+						if (value) definition.required = true;
+						else delete definition.required;
+					}),
+				);
+		});
+
+		group.addSetting(setting => {
+			setting
+				.setName('Default value')
+				.setDesc('Optional YAML value used when no value is entered.')
+				.addText(text =>
+					text.setValue(this.serializeDefault(definition.default)).onChange(value => {
+						if (!value.trim()) delete definition.default;
+						else {
+							try {
+								definition.default = parse(value) as unknown;
+							} catch {
+								definition.default = value;
+							}
+						}
+					}),
+				);
+		});
+
+		if (definition.inputType === 'select' || definition.inputType === 'multiselect')
+			group.addSetting(setting => {
+				setting
+					.setName('Options')
+					.setDesc('Enter one available choice per line.')
+					.addTextArea(textarea =>
+						textarea.setValue(definition.options?.join('\n') ?? '').onChange(value => {
+							let options = value
+								.split(/\r?\n/)
+								.map(option => option.trim())
+								.filter(Boolean);
+							if (options.length) definition.options = options;
+							else delete definition.options;
+						}),
+					);
+			});
+	}
+
+	private renderSpecial(group: SettingGroup, definition: Extract<VariableDefinition, { type: 'special' }>): void {
+		group.addSetting(setting => {
+			setting
+				.setName('Source')
+				.setDesc('Select the Obsidian value to use when the template runs.')
+				.addDropdown(dropdown => {
+					dropdown.addOption('', 'Choose a source…');
+					for (let [source, sourceDefinition] of this.specialVariables) dropdown.addOption(source, sourceDefinition.label);
+					dropdown.setValue(definition.source).onChange(value => {
+						definition.source = value;
+					});
+				});
+		});
+	}
+
+	private renderFormula(group: SettingGroup, definition: Extract<VariableDefinition, { type: 'formula' }>): void {
 		group.addSetting(setting => {
 			setting
 				.setName('Expression')
-				.setDesc('Evaluated with earlier variables as inputs')
-				.addText(text =>
-					text.setValue(this.definition.formula ?? '').onChange(value => {
-						if (value) this.definition.formula = value;
-						else delete this.definition.formula;
-					}),
-				);
-		});
-
-		group.addSetting(setting => {
-			setting.setName('Source').addDropdown(dropdown => {
-				dropdown.addOption('', 'None');
-				for (let [source, sourceDefinition] of this.specialVariables) {
-					dropdown.addOption(source, sourceDefinition.label);
-				}
-				dropdown.setValue(this.definition.source ?? '').onChange(value => {
-					if (value) this.definition.source = value;
-					else delete this.definition.source;
-				});
-			});
-		});
-
-		group.addSetting(setting => {
-			setting
-				.setName('Options')
-				.setDesc('One option per line')
+				.setDesc('Calculate a value with variables declared above this one as inputs.')
 				.addTextArea(textarea =>
-					textarea.setValue(this.definition.options?.join('\n') ?? '').onChange(value => {
-						let options = value
-							.split(/\r?\n/)
-							.map(option => option.trim())
-							.filter(Boolean);
-						if (options.length) this.definition.options = options;
-						else delete this.definition.options;
+					textarea.setValue(definition.formula).onChange(value => {
+						definition.formula = value;
 					}),
 				);
 		});
+	}
 
-		group.addSetting(setting => {
-			setting.setName('Ask for value').addToggle(toggle =>
-				toggle.setValue(this.definition.ask ?? false).onChange(value => {
-					if (value) this.definition.ask = true;
-					else delete this.definition.ask;
-				}),
-			);
-		});
+	private changeType(type: VariableType): void {
+		if (type === this.definition.type) return;
+		this.drafts.set(this.definition.type, this.definition);
+		let common = {
+			...(this.definition.label ? { label: this.definition.label } : {}),
+			...(this.definition.description ? { description: this.definition.description } : {}),
+		};
+		let draft = this.drafts.get(type);
+		if (draft) this.definition = { ...draft, ...common };
+		else if (type === 'input') this.definition = { ...common, type, inputType: 'text' };
+		else if (type === 'special') this.definition = { ...common, type, source: '' };
+		else this.definition = { ...common, type, formula: '' };
+		this.drafts.set(type, this.definition);
+		this.errorEl?.empty();
+		this.renderDetails();
+	}
+
+	private setCommonField(field: 'label' | 'description', value: string): void {
+		if (value) this.definition[field] = value;
+		else delete this.definition[field];
+	}
+
+	private serializeDefault(value: unknown): string {
+		return value === undefined
+			? ''
+			: this.frontmatter
+					.serialize({ value })
+					.replace(/^value:\s*/, '')
+					.trim();
+	}
+
+	private typeLabel(type: VariableType): string {
+		return { input: 'Input', special: 'Special', formula: 'Formula' }[type];
+	}
+
+	private inputTypeLabel(type: VariableInputType): string {
+		return {
+			text: 'Text',
+			textarea: 'Text area',
+			number: 'Number',
+			boolean: 'Toggle',
+			date: 'Date',
+			datetime: 'Date and time',
+			select: 'Select',
+			multiselect: 'Multiple select',
+			list: 'List',
+		}[type];
 	}
 
 	private save(): void {
@@ -184,6 +260,11 @@ export class VariableEditorModal extends Modal {
 		}
 		if (name !== this.originalName && this.existingNames.has(name)) {
 			this.errorEl?.setText(`A variable named “${name}” already exists.`);
+			return;
+		}
+		let issue = new TemplateValidator(this.specialVariables).validateVariables({ [name]: this.definition })[0];
+		if (issue) {
+			this.errorEl?.setText(issue.message);
 			return;
 		}
 

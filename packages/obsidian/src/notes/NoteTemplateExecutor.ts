@@ -39,33 +39,25 @@ export class NoteTemplateExecutor {
 			// ---- Step 2: Capture context ----
 			let context = await this.captureContext(selected);
 
-			// ---- Step 3: Pre-fill initial values from special sources when
-			//            the variable is `ask: true` AND has a source ----
-			let initialValues = Object.fromEntries(
-				Object.entries(selected.variables)
-					.filter(([, definition]) => definition.ask === true && definition.source)
-					.map(([name, definition]) => [name, this.plugin.specialVariables.resolve(definition.source!, context)]),
-			);
-
-			// ---- Step 4: Prompt for user input ----
-			let userValues = await new VariableInputModal(this.plugin.app, selected.variables, initialValues).collect();
+			// ---- Step 3: Prompt for user input ----
+			let userValues = await new VariableInputModal(this.plugin.app, selected.variables).collect();
 			if (userValues === null) return;
 
-			// ---- Step 5: Render ----
+			// ---- Step 4: Render ----
 			let safeJsApi = getSafeJsApi(this.plugin.app, this.plugin);
 			if (!safeJsApi) throw new Error('Safe JS must be installed and enabled to evaluate template expressions.');
 			let engine = new TemplateEngine(this.plugin.specialVariables, new SafeJsExpressionEvaluator(safeJsApi));
 			let rendered = await engine.render(selected, context, userValues, this.plugin.settings.defaultOutputFolderPath);
 			if (rendered.usedFolderFallback) new Notice('No active file was available; using the default output folder.');
 
-			// ---- Step 6: Ensure output folder exists ----
+			// ---- Step 5: Ensure output folder exists ----
 			if (!(await this.ensureFolder(rendered.folder))) return;
 
-			// ---- Step 7: Resolve output path (handle conflicts) ----
+			// ---- Step 6: Resolve output path (handle conflicts) ----
 			let path = await this.resolveOutputPath(rendered.folder, rendered.filename, rendered.conflict);
 			if (!path) return;
 
-			// ---- Step 8: Write file ----
+			// ---- Step 7: Write file ----
 			let file = await this.plugin.app.vault.create(path, rendered.content);
 			if (rendered.openAfterCreate) await this.plugin.app.workspace.getLeaf(false).openFile(file);
 
@@ -113,7 +105,7 @@ export class NoteTemplateExecutor {
 		let activeFile = this.plugin.app.workspace.getActiveFile();
 		let view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
 
-		let sources = Object.values(template.variables).flatMap(definition => (definition.source ? [definition.source] : []));
+		let sources = Object.values(template.variables).flatMap(definition => (definition.type === 'special' ? [definition.source] : []));
 		let requiredContext = getRequiredObsidianContext(this.plugin.specialVariables, sources);
 
 		let context: ObsidianExecutionContext = {

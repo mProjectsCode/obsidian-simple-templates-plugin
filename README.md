@@ -19,10 +19,11 @@ template:
     name: Project note
 variables:
     title:
-        type: text
+        type: input
+        inputType: text
         required: true
     slug:
-        type: text
+        type: formula
         formula: title.toLowerCase().replaceAll(" ", "-")
 output:
     folder:
@@ -41,7 +42,7 @@ status: active
 
 The metadata editor commands can edit existing Markdown files in the template folder while preserving unrelated frontmatter and the Markdown body.
 
-Formula fields contain Safe JS expressions. Variables are evaluated in their frontmatter declaration order, so an expression can use ordinary variables and formula variables declared above it. Safe JS also provides its permissionless expression utilities such as `today()`, `now()`, and `duration()`.
+Each variable has exactly one value source: `input`, `special`, or `formula`. Input variables also declare an `inputType` such as `text`, `number`, `select`, or `list`; only select inputs use `options`. Formula fields contain Safe JS expressions. Variables are evaluated in their frontmatter declaration order, so an expression can use input, special, and formula variables declared above it. Safe JS also provides its permissionless expression utilities such as `today()`, `now()`, and `duration()`.
 
 Template tags also contain Safe JS expressions:
 

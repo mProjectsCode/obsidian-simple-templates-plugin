@@ -37,6 +37,7 @@
 	},
 	"dependencies": {
 		"@lemons_dev/parsinom": "^0.2.1",
-		"yaml": "^2.9.0"
+		"yaml": "^2.9.0",
+		"zod": "^4.4.3"
 	}
 }

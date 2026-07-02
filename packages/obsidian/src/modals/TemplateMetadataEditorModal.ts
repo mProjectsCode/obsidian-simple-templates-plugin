@@ -150,7 +150,8 @@ export class TemplateMetadataEditorModal extends Modal {
 
 		for (let [index, [name, definition]] of entries.entries()) {
 			group.addSetting(setting => {
-				setting.setName(name).setDesc(definition.label ? `${definition.label} · ${definition.type}` : definition.type);
+				let detail = definition.type === 'input' ? `input · ${definition.inputType}` : definition.type;
+				setting.setName(name).setDesc(definition.label ? `${definition.label} · ${detail}` : detail);
 				setting
 					.addButton(button =>
 						button
@@ -215,7 +216,7 @@ export class TemplateMetadataEditorModal extends Modal {
 			this.app,
 			null,
 			`variable${index}`,
-			{ type: 'text' },
+			{ type: 'input', inputType: 'text' },
 			new Set(Object.keys(this.state.variables)),
 			this.specialVariables,
 			(name, definition) => {

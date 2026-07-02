@@ -1,16 +1,9 @@
-import type {
-	NoteOutputDefinition,
-	TemplateDefinition,
-	ValidationIssue,
-	VariableDefinition,
-	VariableType,
-} from 'packages/core/src/domain/Types';
+import type { NoteOutputDefinition, TemplateDefinition, ValidationIssue, VariableDefinition } from 'packages/core/src/domain/Types';
 import type { TemplateProgram } from 'packages/core/src/domain/TemplateAst';
-import { VARIABLE_TYPES } from 'packages/core/src/domain/Types';
 import { TemplateProgramParser } from 'packages/core/src/templates/TemplateProgramParser';
+import { TemplateMetadataSchema, VariableDefinitionSchema } from 'packages/core/src/templates/TemplateSchemas';
 import type { SpecialVariableRegistry } from 'packages/core/src/variables/SpecialVariableRegistry';
-
-const VARIABLE_TYPE_SET = new Set<VariableType>(VARIABLE_TYPES);
+import type { z } from 'zod';
 
 /** Validates raw metadata and compiled template definitions with shared dependencies. */
 export class TemplateValidator {
@@ -19,42 +12,21 @@ export class TemplateValidator {
 		private readonly parser = new TemplateProgramParser(),
 	) {}
 
-	/** Validates a single variable definition's fields. */
-	private validateVariableDefinition(name: string, definition: VariableDefinition): ValidationIssue[] {
+	/** Validates a variable's Zod shape and host-dependent source. */
+	private validateVariableDefinition(name: string, definition: unknown): ValidationIssue[] {
 		let issues: ValidationIssue[] = [];
 
 		if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name))
 			issues.push({ severity: 'error', path: `variables.${name}`, message: `Variable key "${name}" is invalid.` });
 
-		if (!VARIABLE_TYPE_SET.has(definition.type))
-			issues.push({ severity: 'error', path: `variables.${name}.type`, message: `Variable "${name}" has an invalid type.` });
-
-		if (
-			(definition.type === 'select' || definition.type === 'multiselect') &&
-			(!Array.isArray(definition.options) || definition.options.length === 0)
-		) {
-			issues.push({
-				severity: 'error',
-				path: `variables.${name}.options`,
-				message: `Variable "${name}" requires at least one option.`,
-			});
-		}
-
-		if (definition.type === 'special' && (!definition.source || !this.specialVariables.has(definition.source))) {
+		let result = VariableDefinitionSchema.safeParse(definition);
+		if (!result.success) return [...issues, ...result.error.issues.flatMap(issue => this.variableZodIssue(name, definition, issue))];
+		if (result.data.type === 'special' && !this.specialVariables.has(result.data.source))
 			issues.push({
 				severity: 'error',
 				path: `variables.${name}.source`,
 				message: `Special variable "${name}" requires a valid source.`,
 			});
-		}
-
-		if (definition.formula && definition.source)
-			issues.push({
-				severity: 'error',
-				path: `variables.${name}`,
-				message: `Variable "${name}" cannot have both a formula and a source.`,
-			});
-
 		return issues;
 	}
 
@@ -69,102 +41,66 @@ export class TemplateValidator {
 		return issues;
 	}
 
-	/** Guards that `value` is a plain object (used for frontmatter field access). */
-	private record(value: unknown): Record<string, unknown> | null {
-		return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
-	}
-
-	/** Validates the frontmatter `template` identity fields. */
-	private validateIdentityFields(identity: Record<string, unknown>): ValidationIssue[] {
-		let issues: ValidationIssue[] = [];
-		if (identity.id !== undefined && typeof identity.id !== 'string')
-			issues.push({ severity: 'error', path: 'template.id', message: 'Template ID must be a string.' });
-		if (identity.name !== undefined && typeof identity.name !== 'string')
-			issues.push({ severity: 'error', path: 'template.name', message: 'Template name must be a string.' });
-		if (identity.description !== undefined && typeof identity.description !== 'string')
-			issues.push({ severity: 'error', path: 'template.description', message: 'Template description must be a string.' });
-		if (identity.tags !== undefined && (!Array.isArray(identity.tags) || identity.tags.some(tag => typeof tag !== 'string')))
-			issues.push({ severity: 'error', path: 'template.tags', message: 'Template tags must be a list of strings.' });
-		return issues;
-	}
-
-	/** Validates a single variable entry in the frontmatter `variables` map. */
-	private validateVariableEntry(name: string, value: unknown): ValidationIssue[] {
-		let issues: ValidationIssue[] = [];
-		let definition = this.record(value);
-		if (!definition) {
-			issues.push({ severity: 'error', path: `variables.${name}`, message: `Variable "${name}" must be a mapping.` });
-			return issues;
-		}
-		for (let field of ['label', 'description', 'formula', 'source'] as const)
-			if (definition[field] !== undefined && typeof definition[field] !== 'string')
-				issues.push({
-					severity: 'error',
-					path: `variables.${name}.${field}`,
-					message: `Variable "${name}" ${field} must be a string.`,
-				});
-		for (let field of ['required', 'ask'] as const)
-			if (definition[field] !== undefined && typeof definition[field] !== 'boolean')
-				issues.push({
-					severity: 'error',
-					path: `variables.${name}.${field}`,
-					message: `Variable "${name}" ${field} must be true or false.`,
-				});
-		if (
-			definition.options !== undefined &&
-			(!Array.isArray(definition.options) || definition.options.some(option => typeof option !== 'string'))
-		)
-			issues.push({
-				severity: 'error',
-				path: `variables.${name}.options`,
-				message: `Variable "${name}" options must be a list of strings.`,
-			});
-		return issues;
-	}
-
-	/** Validates the `output` frontmatter field. */
-	private validateOutputEntry(output: Record<string, unknown>): ValidationIssue[] {
-		let issues: ValidationIssue[] = [];
-		if (output.filename !== undefined && typeof output.filename !== 'string')
-			issues.push({ severity: 'error', path: 'output.filename', message: 'Output filename must be a string.' });
-		if (output.conflict !== undefined && typeof output.conflict !== 'string')
-			issues.push({ severity: 'error', path: 'output.conflict', message: 'Output conflict strategy must be a string.' });
-		if (output.openAfterCreate !== undefined && typeof output.openAfterCreate !== 'boolean')
-			issues.push({ severity: 'error', path: 'output.openAfterCreate', message: 'Open after create must be true or false.' });
-		if (output.folder !== undefined && !this.record(output.folder))
-			issues.push({ severity: 'error', path: 'output.folder', message: 'Output folder must be an object with a mode.' });
-		return issues;
-	}
-
 	/** Validates the shape of the raw frontmatter data. */
 	private validateMetadataShape(data: Record<string, unknown>): ValidationIssue[] {
-		let issues: ValidationIssue[] = [];
+		let result = TemplateMetadataSchema.safeParse(data);
+		return result.success ? [] : result.error.issues.flatMap(issue => this.metadataZodIssue(data, issue));
+	}
 
-		let identity = this.record(data.template);
-		if (!identity) return [{ severity: 'error', path: 'template', message: 'Template metadata must be a mapping.' }];
-		issues.push(...this.validateIdentityFields(identity));
+	private variableZodIssue(name: string, definition: unknown, issue: z.core.$ZodIssue): ValidationIssue[] {
+		let path = `variables.${name}${issue.path.length ? `.${issue.path.map(String).join('.')}` : ''}`;
+		let fields = definition !== null && typeof definition === 'object' && !Array.isArray(definition) ? definition : null;
+		let type = fields ? String(Reflect.get(fields, 'type')) : '';
+		if (issue.code === 'unrecognized_keys')
+			return issue.keys.map(field => ({
+				severity: 'error',
+				path: `variables.${name}.${field}`,
+				message: `Variable "${name}" cannot define ${field} when its type is "${type}".`,
+			}));
+		let field = String(issue.path[0] ?? '');
+		let message: string;
+		if (!fields) message = `Variable "${name}" must be a mapping.`;
+		else if (field === 'type') message = `Variable "${name}" has an invalid type.`;
+		else if (field === 'inputType') message = `Input variable "${name}" has an invalid input type.`;
+		else if (field === 'options' && issue.message === 'requires-options') message = `Variable "${name}" requires at least one option.`;
+		else if (field === 'options' && issue.message === 'options-not-allowed')
+			message = 'Only select and multiselect variables can define options.';
+		else if (field === 'options') message = `Variable "${name}" options must be a list of strings.`;
+		else if (field === 'source') message = `Special variable "${name}" requires a valid source.`;
+		else if (field === 'formula' && issue.code === 'invalid_type') message = `Variable "${name}" formula must be a string.`;
+		else if (field === 'formula') message = `Formula variable "${name}" requires an expression.`;
+		else if (field === 'required') message = `Variable "${name}" required must be true or false.`;
+		else if (field === 'label' || field === 'description') message = `Variable "${name}" ${field} must be a string.`;
+		else message = issue.message;
+		return [{ severity: 'error', path, message }];
+	}
 
-		if (data.variables !== undefined) {
-			let variables = this.record(data.variables);
-			if (!variables) {
-				issues.push({ severity: 'error', path: 'variables', message: 'Variables must be a mapping.' });
-			} else {
-				for (let [name, value] of Object.entries(variables)) {
-					issues.push(...this.validateVariableEntry(name, value));
-				}
-			}
+	private metadataZodIssue(data: Record<string, unknown>, issue: z.core.$ZodIssue): ValidationIssue[] {
+		let [section, name, ...variablePath] = issue.path.map(String);
+		if (section === 'variables' && name !== undefined) {
+			let variables = data.variables;
+			let definition: unknown =
+				variables !== null && typeof variables === 'object' ? (variables as Record<string, unknown>)[name] : undefined;
+			return this.variableZodIssue(name, definition, { ...issue, path: variablePath });
 		}
 
-		if (data.output !== undefined) {
-			let output = this.record(data.output);
-			if (!output) {
-				issues.push({ severity: 'error', path: 'output', message: 'Output must be a mapping.' });
-			} else {
-				issues.push(...this.validateOutputEntry(output));
-			}
-		}
-
-		return issues;
+		let path = issue.path.map(String).join('.');
+		let message: string;
+		if (path === 'template') message = 'Template metadata must be a mapping.';
+		else if (path === 'template.id') message = 'Template ID must be a string.';
+		else if (path === 'template.name') message = 'Template name must be a string.';
+		else if (path === 'template.description') message = 'Template description must be a string.';
+		else if (path.startsWith('template.tags')) message = 'Template tags must be a list of strings.';
+		else if (path === 'variables') message = 'Variables must be a mapping.';
+		else if (path === 'output') message = 'Output must be a mapping.';
+		else if (path === 'output.filename') message = 'Output filename must be a string.';
+		else if (path === 'output.conflict') message = 'Output conflict strategy must be a string.';
+		else if (path === 'output.openAfterCreate') message = 'Open after create must be true or false.';
+		else if (path === 'output.folder') message = 'Output folder must be an object with a mode.';
+		else if (path === 'output.folder.mode') message = 'Output folder mode must be a string.';
+		else if (path === 'output.folder.path') message = 'Output folder path must be a string.';
+		else message = issue.message;
+		return [{ severity: 'error', path: path || undefined, message }];
 	}
 
 	/** Validates the `NoteOutputDefinition` sub-fields. */

@@ -1,10 +1,16 @@
 import type { TemplateAst } from 'packages/core/src/domain/TemplateAst';
 
-/** Primitive types a template variable can hold. */
-export type VariableType = 'text' | 'textarea' | 'number' | 'boolean' | 'date' | 'datetime' | 'select' | 'multiselect' | 'list' | 'special';
+/** Determines how a template variable receives its value. */
+export type VariableType = 'input' | 'special' | 'formula';
 
 /** All valid variable types in one array (used for runtime validation). */
-export const VARIABLE_TYPES = [
+export const VARIABLE_TYPES = ['input', 'special', 'formula'] as const satisfies readonly VariableType[];
+
+/** Controls the editor and coercion used for an input variable. */
+export type VariableInputType = 'text' | 'textarea' | 'number' | 'boolean' | 'date' | 'datetime' | 'select' | 'multiselect' | 'list';
+
+/** All supported input controls in one array (used for runtime validation). */
+export const VARIABLE_INPUT_TYPES = [
 	'text',
 	'textarea',
 	'number',
@@ -14,21 +20,36 @@ export const VARIABLE_TYPES = [
 	'select',
 	'multiselect',
 	'list',
-	'special',
-] as const satisfies readonly VariableType[];
+] as const satisfies readonly VariableInputType[];
 
-/** Declaration of a single template variable. */
-export interface VariableDefinition {
+interface BaseVariableDefinition {
 	label?: string;
 	description?: string;
-	type: VariableType;
+}
+
+/** A value collected from the user. */
+export interface InputVariableDefinition extends BaseVariableDefinition {
+	type: 'input';
+	inputType: VariableInputType;
 	required?: boolean;
 	default?: unknown;
-	formula?: string;
-	source?: string;
 	options?: string[];
-	ask?: boolean;
 }
+
+/** A value supplied by a host-registered source. */
+export interface SpecialValueVariableDefinition extends BaseVariableDefinition {
+	type: 'special';
+	source: string;
+}
+
+/** A value computed from variables declared above it. */
+export interface FormulaVariableDefinition extends BaseVariableDefinition {
+	type: 'formula';
+	formula: string;
+}
+
+/** Declaration of a single template variable. */
+export type VariableDefinition = InputVariableDefinition | SpecialValueVariableDefinition | FormulaVariableDefinition;
 
 /** Controls where the rendered note is placed. */
 export type OutputFolderDefinition = { mode: 'default' } | { mode: 'same-as-active-file' } | { mode: 'path'; path: string };

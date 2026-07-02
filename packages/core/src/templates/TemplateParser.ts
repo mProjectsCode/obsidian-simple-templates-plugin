@@ -5,6 +5,7 @@ import type {
 	ParseResult,
 	TemplateDefinition,
 	TemplateIdentity,
+	ValidationIssue,
 	VariableDefinition,
 } from 'packages/core/src/domain/Types';
 import { FrontmatterService } from 'packages/core/src/frontmatter/FrontmatterService';
@@ -61,7 +62,7 @@ export class TemplateParser {
 				parsedFrontmatter: document.data,
 				ast: this.compileAst(body, blocks[0], output),
 			};
-			let issues = [...this.validator.validateMetadata(document.data), ...this.validator.validate(template)];
+			let issues = this.uniqueIssues([...this.validator.validateMetadata(document.data), ...this.validator.validate(template)]);
 			if (blocks.length > 1)
 				issues.push({ severity: 'error', message: 'A template may contain at most one note-frontmatter block.' });
 			if (!document.hasFrontmatter) issues.unshift({ severity: 'error', message: 'Template metadata frontmatter is missing.' });
@@ -69,6 +70,16 @@ export class TemplateParser {
 		} catch (error) {
 			return { template: null, issues: [{ severity: 'error', message: error instanceof Error ? error.message : String(error) }] };
 		}
+	}
+
+	private uniqueIssues(issues: ValidationIssue[]): ValidationIssue[] {
+		let seen = new Set<string>();
+		return issues.filter(issue => {
+			let key = `${issue.severity}\0${issue.path ?? ''}\0${issue.message}`;
+			if (seen.has(key)) return false;
+			seen.add(key);
+			return true;
+		});
 	}
 
 	private extractOutputFrontmatter(source: string): { body: string; blocks: string[] } {

@@ -11,6 +11,7 @@ import {
 	TemplateProgramParser,
 	TemplateRenderer,
 	TemplateValidationError,
+	VariableResolutionError,
 	VariableResolver,
 	SpecialVariableRegistry,
 } from 'packages/core/src/index';
@@ -112,9 +113,10 @@ template:
   name: Project Note
 variables:
   title:
-    type: text
+    type: input
+    inputType: text
   slug:
-    type: text
+    type: formula
     formula: title.toLowerCase().replaceAll(" ", "-")
 output:
   filename: "{{ slug }}"
@@ -187,8 +189,8 @@ title: "{{ title }}"
 template: { id: bad, name: 12, tags: nope }
 variables:
   broken: nope
-  a: { type: text, formula: b.toLowerCase() }
-  b: { type: text, formula: a.toLowerCase() }
+  a: { type: formula, formula: b.toLowerCase() }
+  b: { type: formula, formula: a.toLowerCase() }
 output: { openAfterCreate: yes }
 ---
 body`,
@@ -199,6 +201,31 @@ body`,
 		expect(messages).toContain('Variable "broken" must be a mapping.');
 		expect(messages.some(message => message.includes('circular dependency'))).toBeFalse();
 		expect(messages).toContain('Open after create must be true or false.');
+	});
+
+	test('enforces exclusive input, special, and formula variable fields', () => {
+		let result = parseTemplate(
+			'bad-variables.md',
+			`---
+template: { id: bad-variables, name: Bad variables }
+variables:
+  mixedInput: { type: input, inputType: text, formula: nope }
+  mixedSpecial: { type: special, source: test.value, default: nope }
+  mixedFormula: { type: formula, formula: result, source: test.value }
+  textOptions: { type: input, inputType: text, options: [one] }
+  emptyFormula: { type: formula, formula: '' }
+  malformedFormula: { type: formula, formula: 12 }
+---
+body`,
+		);
+		expect(result.template).not.toBeNull();
+		let messages = result.issues.map(issue => issue.message);
+		expect(messages).toContain('Variable "mixedInput" cannot define formula when its type is "input".');
+		expect(messages).toContain('Variable "mixedSpecial" cannot define default when its type is "special".');
+		expect(messages).toContain('Variable "mixedFormula" cannot define source when its type is "formula".');
+		expect(messages).toContain('Only select and multiselect variables can define options.');
+		expect(messages).toContain('Formula variable "emptyFormula" requires an expression.');
+		expect(messages).toContain('Variable "malformedFormula" formula must be a string.');
 	});
 
 	test('reports malformed output templates without aborting parsing', () => {
@@ -297,8 +324,8 @@ describe('renderer and expressions', () => {
 		let evaluator = new MockExpressionEvaluator();
 		let values = await new VariableResolver(SPECIAL_VARIABLES, evaluator).resolve(
 			{
-				title: { type: 'text' },
-				slug: { type: 'text', formula: 'title.toLowerCase().replaceAll(" ", "-")' },
+				title: { type: 'input', inputType: 'text' },
+				slug: { type: 'formula', formula: 'title.toLowerCase().replaceAll(" ", "-")' },
 			},
 			CONTEXT,
 			{ title: 'My Note' },
@@ -330,10 +357,10 @@ describe('variable resolution', () => {
 	test('resolves context, user input, ordered expressions, defaults, and types', async () => {
 		let definitions = {
 			file: { type: 'special' as const, source: 'host.basename' as const },
-			title: { type: 'text' as const, required: true },
-			slug: { type: 'text' as const, formula: 'title.toLowerCase().replaceAll(" ", "-")' },
-			loud: { type: 'text' as const, formula: 'slug.toUpperCase()' },
-			count: { type: 'number' as const, default: '2' },
+			title: { type: 'input' as const, inputType: 'text' as const, required: true },
+			slug: { type: 'formula' as const, formula: 'title.toLowerCase().replaceAll(" ", "-")' },
+			loud: { type: 'formula' as const, formula: 'slug.toUpperCase()' },
+			count: { type: 'input' as const, inputType: 'number' as const, default: '2' },
 		};
 		expect(VariableResolver.needingInput(definitions)).toEqual(['title', 'count']);
 		expect(await resolveVariables(definitions, CONTEXT, { title: 'My Note' })).toEqual({
@@ -349,7 +376,10 @@ describe('variable resolution', () => {
 		expect(
 			(
 				await resolveVariables(
-					{ base: { type: 'text' }, derived: { type: 'text', formula: 'base?.toUpperCase() ?? ""' } },
+					{
+						base: { type: 'input', inputType: 'text' },
+						derived: { type: 'formula', formula: 'base?.toUpperCase() ?? ""' },
+					},
 					CONTEXT,
 					{},
 				)
@@ -358,16 +388,29 @@ describe('variable resolution', () => {
 	});
 
 	test('detects missing required values and expression failures', async () => {
-		expect(await rejected(resolveVariables({ title: { type: 'text', required: true } }, CONTEXT, {}))).toBeInstanceOf(
-			MissingRequiredVariableError,
+		expect(
+			await rejected(resolveVariables({ title: { type: 'input', inputType: 'text', required: true } }, CONTEXT, {})),
+		).toBeInstanceOf(MissingRequiredVariableError);
+		expect(await rejected(resolveVariables({ a: { type: 'formula', formula: 'unknown()' } }, CONTEXT, {}))).toBeInstanceOf(
+			FormulaError,
 		);
-		expect(await rejected(resolveVariables({ a: { type: 'text', formula: 'unknown()' } }, CONTEXT, {}))).toBeInstanceOf(FormulaError);
+	});
+
+	test('rejects user values for computed variables', async () => {
+		let error = await rejected(resolveVariables({ slug: { type: 'formula', formula: '"generated"' } }, CONTEXT, { slug: 'override' }));
+		expect(error).toBeInstanceOf(VariableResolutionError);
+		expect(error.message).toContain('does not accept user input');
 	});
 
 	test('rejects multiselect values outside configured options', async () => {
 		expect(
-			(await rejected(resolveVariables({ tags: { type: 'multiselect', options: ['one', 'two'] } }, CONTEXT, { tags: 'one\nthree' })))
-				.message,
+			(
+				await rejected(
+					resolveVariables({ tags: { type: 'input', inputType: 'multiselect', options: ['one', 'two'] } }, CONTEXT, {
+						tags: 'one\nthree',
+					}),
+				)
+			).message,
 		).toContain('outside its configured options');
 	});
 });
@@ -391,7 +434,7 @@ describe('paths and conflicts', () => {
 			id: 'x',
 			name: 'Default name',
 			sourcePath: 'x.md',
-			variables: { slug: { type: 'text' } },
+			variables: { slug: { type: 'input', inputType: 'text' } },
 			body: '',
 			rawFrontmatter: '',
 			parsedFrontmatter: {},
@@ -408,7 +451,7 @@ describe('paths and conflicts', () => {
 			id: 'x',
 			name: 'X',
 			sourcePath: 'x',
-			variables: { value: { type: 'text' } },
+			variables: { value: { type: 'input', inputType: 'text' } },
 			body: '',
 			outputFrontmatterTemplate: 'items: [{{ value }}',
 			rawFrontmatter: '',
@@ -442,8 +485,8 @@ describe('frontmatter editing and complete rendering', () => {
 			`---
 template: { id: p, name: Project }
 variables:
-  title: { type: text, required: true }
-  slug: { type: text, formula: 'title.toLowerCase().replaceAll(" ", "-")' }
+  title: { type: input, inputType: text, required: true }
+  slug: { type: formula, formula: 'title.toLowerCase().replaceAll(" ", "-")' }
 output:
   folder: { mode: same-as-active-file }
   filename: "{{ slug }}"

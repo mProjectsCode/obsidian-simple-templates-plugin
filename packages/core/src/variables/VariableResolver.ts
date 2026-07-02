@@ -15,7 +15,7 @@ export class VariableResolver {
 
 	static needingInput(definitions: Record<string, VariableDefinition>): string[] {
 		return Object.entries(definitions)
-			.filter(([, definition]) => definition.ask === true || (!definition.formula && !definition.source))
+			.filter(([, definition]) => definition.type === 'input')
 			.map(([name]) => name);
 	}
 
@@ -29,23 +29,26 @@ export class VariableResolver {
 
 		// ---- 1. Populate from special sources ----
 		for (let [name, definition] of Object.entries(definitions)) {
-			if (definition.source && definition.ask !== true) values[name] = this.specialVariables.resolve(definition.source, context);
+			if (definition.type === 'special') values[name] = this.specialVariables.resolve(definition.source, context);
 		}
 
-		// ---- 2. Apply user-provided values (override specials) ----
+		// ---- 2. Apply user-provided input values ----
 		for (let [name, value] of Object.entries(userValues)) {
-			if (!(name in definitions)) throw new VariableResolutionError(`Unknown variable "${name}".`);
+			let definition = definitions[name];
+			if (!definition) throw new VariableResolutionError(`Unknown variable "${name}".`);
+			if (definition.type !== 'input') throw new VariableResolutionError(`Variable "${name}" does not accept user input.`);
 			values[name] = value;
 		}
 
-		// ---- 3. Variables with no source, no formula, and no user value are undefined ----
+		// ---- 3. Inputs without a user value are undefined ----
 		for (let [name, definition] of Object.entries(definitions)) {
-			if (!definition.formula && !definition.source && !(name in values)) values[name] = undefined;
+			if (definition.type === 'input' && !(name in values)) values[name] = undefined;
 		}
 
 		// ---- 4. Apply defaults so expressions can consume them ----
 		for (let [name, definition] of Object.entries(definitions))
-			if (values[name] === undefined && definition.default !== undefined) values[name] = structuredClone(definition.default);
+			if (definition.type === 'input' && values[name] === undefined && definition.default !== undefined)
+				values[name] = structuredClone(definition.default);
 
 		// ---- 5. Resolve Safe JS expressions in declaration order ----
 		await this.resolveFormulas(definitions, userValues, values, sourcePath);
@@ -53,7 +56,11 @@ export class VariableResolver {
 		// ---- 6. Coerce and check required ----
 		for (let [name, definition] of Object.entries(definitions)) {
 			values[name] = this.coerce(name, definition, values[name]);
-			if (definition.required && (values[name] === undefined || values[name] === null || values[name] === '')) {
+			if (
+				definition.type === 'input' &&
+				definition.required &&
+				(values[name] === undefined || values[name] === null || values[name] === '')
+			) {
 				throw new MissingRequiredVariableError(`Required variable "${name}" has no value.`);
 			}
 		}
@@ -68,7 +75,7 @@ export class VariableResolver {
 		sourcePath?: string,
 	): Promise<void> {
 		for (let [name, definition] of Object.entries(definitions)) {
-			if (!definition.formula || (definition.ask === true && Object.hasOwn(userValues, name))) continue;
+			if (definition.type !== 'formula') continue;
 			try {
 				values[name] = await this.expressions.evaluate(definition.formula, values, sourcePath);
 			} catch (error) {
@@ -79,7 +86,8 @@ export class VariableResolver {
 
 	private coerce(name: string, definition: VariableDefinition, value: unknown): unknown {
 		if (value === undefined || value === null || value === '') return value;
-		switch (definition.type) {
+		if (definition.type !== 'input') return value;
+		switch (definition.inputType) {
 			case 'number': {
 				let number = typeof value === 'number' ? value : Number(value);
 				if (!Number.isFinite(number)) throw new VariableResolutionError(`Variable "${name}" must be a number.`);
@@ -123,7 +131,11 @@ export class VariableResolver {
 					.split(/\r?\n|,/)
 					.map(item => item.trim())
 					.filter(Boolean);
-		if (definition.type === 'multiselect' && items.some(item => !definition.options?.includes(this.scalar(item, name))))
+		if (
+			definition.type === 'input' &&
+			definition.inputType === 'multiselect' &&
+			items.some(item => !definition.options?.includes(this.scalar(item, name)))
+		)
 			throw new VariableResolutionError(`Variable "${name}" contains a value outside its configured options.`);
 		return items;
 	}

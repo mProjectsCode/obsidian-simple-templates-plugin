@@ -93,9 +93,9 @@ describe('picker modals', () => {
 describe('variable input modal', () => {
 	test('does not submit defaults for hidden source or formula variables', async () => {
 		let modal = new VariableInputModal({} as never, {
-			title: { type: 'text' },
-			fromContext: { type: 'special', source: 'activeFile.basename', default: 'hidden default' },
-			fromFormula: { type: 'text', formula: 'title.toUpperCase()', default: 'hidden formula default' },
+			title: { type: 'input', inputType: 'text' },
+			fromContext: { type: 'special', source: 'activeFile.basename' },
+			fromFormula: { type: 'formula', formula: 'title.toUpperCase()' },
 		});
 		let collected = modal.collect();
 		(modal as unknown as { submit(): void }).submit();
