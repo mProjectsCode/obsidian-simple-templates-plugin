@@ -9,6 +9,7 @@ import { SimpleTemplatesSettingsTab } from 'packages/obsidian/src/settings/Setti
 import { TemplateMetadataManager } from 'packages/obsidian/src/templates/TemplateMetadataManager';
 import { TemplateRegistry } from 'packages/obsidian/src/templates/TemplateRegistry';
 import { TemplateRegistryMonitor } from 'packages/obsidian/src/templates/TemplateRegistryMonitor';
+import 'packages/obsidian/src/styles.css';
 import { Notice, Plugin } from 'obsidian';
 
 export default class SimpleTemplatesPlugin extends Plugin {

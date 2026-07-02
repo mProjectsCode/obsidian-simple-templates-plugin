@@ -31,6 +31,7 @@ export class VariableInputModal extends Modal {
 		initialValues: ResolvedVariables = {},
 	) {
 		super(app);
+		this.modalEl.addClass('simple-templates-modal');
 		this.inputNames = VariableResolver.needingInput(definitions);
 
 		// Only return values represented by controls in this modal. Seeding hidden

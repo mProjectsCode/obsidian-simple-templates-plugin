@@ -15,6 +15,7 @@ export class TemplatePickerModal extends FuzzySuggestModal<TemplateDefinition> {
 		private readonly templates: TemplateDefinition[],
 	) {
 		super(app);
+		this.modalEl.addClass('simple-templates-modal');
 	}
 
 	/** Opens the modal and resolves with the selected template (or null if

@@ -1,0 +1,3 @@
+.simple-templates-modal .setting-group .setting-item {
+	padding: var(--setting-items-padding-y) var(--setting-items-padding-x) !important;
+}

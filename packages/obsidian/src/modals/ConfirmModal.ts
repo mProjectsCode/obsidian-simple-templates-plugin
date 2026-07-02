@@ -14,6 +14,7 @@ export class ConfirmModal extends Modal {
 		private readonly confirmLabel: string,
 	) {
 		super(app);
+		this.modalEl.addClass('simple-templates-modal');
 	}
 
 	/** Opens the modal and returns a promise that resolves with the boolean

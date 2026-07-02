@@ -36,6 +36,7 @@ class MockTFile {
 }
 
 class MockFuzzySuggestModal {
+	modalEl = { addClass: (_className: string) => undefined };
 	setPlaceholder(_placeholder: string): void {}
 	open(): void {}
 	onClose(): void {}
@@ -43,6 +44,7 @@ class MockFuzzySuggestModal {
 
 class MockModal {
 	contentEl = { empty: () => undefined };
+	modalEl = { addClass: (_className: string) => undefined };
 	open(): void {}
 	close(): void {
 		this.onClose();

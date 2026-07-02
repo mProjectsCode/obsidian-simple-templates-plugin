@@ -16,6 +16,7 @@ export class FilePickerModal extends FuzzySuggestModal<TFile> {
 		private readonly validPaths: Set<string>,
 	) {
 		super(app);
+		this.modalEl.addClass('simple-templates-modal');
 	}
 
 	/** Opens the modal and resolves with the selected file (or null if

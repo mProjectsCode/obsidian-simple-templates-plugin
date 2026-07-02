@@ -1,5 +1,5 @@
-import { FrontmatterService, VARIABLE_TYPES } from 'packages/core/src/index';
-import type { ValidationIssue, VariableDefinition, VariableType } from 'packages/core/src/index';
+import { FrontmatterService } from 'packages/core/src/index';
+import type { ValidationIssue, VariableDefinition } from 'packages/core/src/index';
 import {
 	createEditableTemplateMetadata,
 	mergeEditableTemplateMetadata,
@@ -8,8 +8,8 @@ import {
 import type { EditableTemplateMetadata } from 'packages/obsidian/src/modals/TemplateMetadataState';
 import type { App, TFile } from 'obsidian';
 import { Modal, Notice, SettingGroup } from 'obsidian';
-import { parse } from 'yaml';
 import { ConfirmModal } from 'packages/obsidian/src/modals/ConfirmModal';
+import { VariableEditorModal } from 'packages/obsidian/src/modals/VariableEditorModal';
 import type { ObsidianSpecialVariableRegistry } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
 
 /**
@@ -18,7 +18,7 @@ import type { ObsidianSpecialVariableRegistry } from 'packages/obsidian/src/note
  */
 export class TemplateMetadataEditorModal extends Modal {
 	private state: EditableTemplateMetadata;
-	private previewEl: HTMLTextAreaElement | null = null;
+	private previewEl: HTMLElement | null = null;
 	private validationEl: HTMLElement | null = null;
 	private readonly frontmatter = new FrontmatterService();
 
@@ -32,6 +32,7 @@ export class TemplateMetadataEditorModal extends Modal {
 		private readonly onReload: (file: TFile) => Promise<void>,
 	) {
 		super(app);
+		this.modalEl.addClass('simple-templates-modal');
 		this.state = createEditableTemplateMetadata(originalContent);
 	}
 
@@ -54,10 +55,7 @@ export class TemplateMetadataEditorModal extends Modal {
 		identityGroup.setHeading('Identity');
 		this.renderIdentityFields(identityGroup);
 
-		for (let [name, definition] of Object.entries(this.state.variables)) {
-			this.renderVariable(name, definition);
-		}
-		this.renderAddVariableButton();
+		this.renderVariables();
 
 		let outputGroup = new SettingGroup(this.contentEl);
 		outputGroup.setHeading('Output');
@@ -72,13 +70,8 @@ export class TemplateMetadataEditorModal extends Modal {
 	private renderPreview(): void {
 		let previewGroup = new SettingGroup(this.contentEl);
 		previewGroup.setHeading('Raw YAML preview');
-		previewGroup.addSetting(setting => {
-			setting.addTextArea(textarea => {
-				this.previewEl = textarea.inputEl;
-				textarea.inputEl.readOnly = true;
-				textarea.inputEl.rows = 12;
-			});
-		});
+		let pre = this.contentEl.createEl('pre');
+		this.previewEl = pre.createEl('code', { cls: 'language-yaml' });
 	}
 
 	private renderValidation(): void {
@@ -149,186 +142,96 @@ export class TemplateMetadataEditorModal extends Modal {
 		});
 	}
 
-	/** Renders all editable fields for a single variable as its own group. */
-	private renderVariable(name: string, definition: VariableDefinition): void {
+	/** Renders variables as an ordered summary list with focused actions. */
+	private renderVariables(): void {
 		let group = new SettingGroup(this.contentEl);
-		group.setHeading(name);
+		group.setHeading('Variables');
+		let entries = Object.entries(this.state.variables);
 
-		// Key (renamable)
-		group.addSetting(setting => {
-			setting.setName('Key').addText(text =>
-				text.setValue(name).onChange(value => {
-					if (value === name || !value) return;
-					if (!(value in this.state.variables)) {
-						let entries: [string, VariableDefinition][] = Object.entries(this.state.variables).map(([key, item]) =>
-							key === name ? [value, item] : [key, item],
-						);
-						this.state.variables = Object.fromEntries(entries);
-						name = value;
-					}
-					this.updatePreview();
-				}),
-			);
-		});
-
-		// Label
-		group.addSetting(setting => {
-			setting.setName('Label').addText(text =>
-				text.setValue(definition.label ?? '').onChange(value => {
-					if (value) definition.label = value;
-					else delete definition.label;
-					this.updatePreview();
-				}),
-			);
-		});
-
-		// Description
-		group.addSetting(setting => {
-			setting.setName('Description').addText(text =>
-				text.setValue(definition.description ?? '').onChange(value => {
-					if (value) definition.description = value;
-					else delete definition.description;
-					this.updatePreview();
-				}),
-			);
-		});
-
-		// Type
-		group.addSetting(setting => {
-			setting.setName('Type').addDropdown(dropdown => {
-				for (let type of VARIABLE_TYPES) dropdown.addOption(type, type);
-				dropdown.setValue(definition.type).onChange(value => {
-					definition.type = value as VariableType;
-					this.render();
-				});
+		for (let [index, [name, definition]] of entries.entries()) {
+			group.addSetting(setting => {
+				setting.setName(name).setDesc(definition.label ? `${definition.label} · ${definition.type}` : definition.type);
+				setting
+					.addButton(button =>
+						button
+							.setIcon('arrow-up')
+							.setTooltip(`Move ${name} up`)
+							.setDisabled(index === 0)
+							.onClick(() => this.moveVariable(index, index - 1)),
+					)
+					.addButton(button =>
+						button
+							.setIcon('arrow-down')
+							.setTooltip(`Move ${name} down`)
+							.setDisabled(index === entries.length - 1)
+							.onClick(() => this.moveVariable(index, index + 1)),
+					)
+					.addButton(button =>
+						button
+							.setIcon('pencil')
+							.setTooltip(`Edit ${name}`)
+							.onClick(() => this.openVariableEditor(name, definition)),
+					)
+					.addButton(button =>
+						button
+							.setIcon('trash-2')
+							.setTooltip(`Delete ${name}`)
+							.setDestructive()
+							.onClick(() => {
+								delete this.state.variables[name];
+								this.render();
+							}),
+					);
 			});
-		});
+		}
 
-		// Required toggle
 		group.addSetting(setting => {
-			setting.setName('Required').addToggle(toggle =>
-				toggle.setValue(definition.required ?? false).onChange(value => {
-					if (value) definition.required = true;
-					else delete definition.required;
-					this.updatePreview();
-				}),
-			);
-		});
-
-		// Default value (parsed as YAML)
-		group.addSetting(setting => {
-			setting
-				.setName('Default')
-				.setDesc('YAML scalar or collection')
-				.addText(text =>
-					text
-						.setValue(
-							definition.default === undefined
-								? ''
-								: this.frontmatter
-										.serialize({ value: definition.default })
-										.replace(/^value:\s*/, '')
-										.trim(),
-						)
-						.onChange(value => {
-							if (!value.trim()) delete definition.default;
-							else {
-								try {
-									let parsed: unknown = parse(value);
-									definition.default = parsed;
-								} catch {
-									definition.default = value;
-								}
-							}
-							this.updatePreview();
-						}),
-				);
-		});
-
-		// Safe JS expression
-		group.addSetting(setting => {
-			setting
-				.setName('Expression')
-				.setDesc('Evaluated with earlier variables as inputs')
-				.addText(text =>
-					text.setValue(definition.formula ?? '').onChange(value => {
-						if (value) definition.formula = value;
-						else delete definition.formula;
-						this.updatePreview();
-					}),
-				);
-		});
-
-		// Special source
-		group.addSetting(setting => {
-			setting.setName('Source').addDropdown(dropdown => {
-				dropdown.addOption('', 'None');
-				for (let [source, sourceDefinition] of this.specialVariables) {
-					dropdown.addOption(source, sourceDefinition.label);
-				}
-				dropdown.setValue(definition.source ?? '').onChange(value => {
-					if (value) definition.source = value;
-					else delete definition.source;
-					this.updatePreview();
-				});
-			});
-		});
-
-		// Options (one per line)
-		group.addSetting(setting => {
-			setting
-				.setName('Options')
-				.setDesc('One option per line')
-				.addTextArea(textarea =>
-					textarea.setValue(definition.options?.join('\n') ?? '').onChange(value => {
-						let options = value
-							.split(/\r?\n/)
-							.map(option => option.trim())
-							.filter(Boolean);
-						if (options.length) definition.options = options;
-						else delete definition.options;
-						this.updatePreview();
-					}),
-				);
-		});
-
-		// Ask toggle
-		group.addSetting(setting => {
-			setting.setName('Ask for value').addToggle(toggle =>
-				toggle.setValue(definition.ask ?? false).onChange(value => {
-					if (value) definition.ask = true;
-					else delete definition.ask;
-					this.updatePreview();
-				}),
-			);
-		});
-
-		// Delete button
-		group.addSetting(setting => {
-			setting.addButton(button =>
-				button
-					.setDestructive()
-					.setButtonText('Remove variable')
-					.onClick(() => {
-						delete this.state.variables[name];
-						this.render();
-					}),
-			);
+			setting.addButton(button => button.setButtonText('Add variable').onClick(() => this.openNewVariableEditor()));
 		});
 	}
 
-	/** Button that adds a new (blank) variable and re-renders the modal. */
-	private renderAddVariableButton(): void {
-		new SettingGroup(this.contentEl).addSetting(setting => {
-			setting.addButton(button =>
-				button.setButtonText('Add variable').onClick(() => {
-					let index = 1;
-					while (`variable${index}` in this.state.variables) index += 1;
-					this.state.variables[`variable${index}`] = { type: 'text' };
-					this.render();
-				}),
-			);
-		});
+	private openVariableEditor(name: string, definition: VariableDefinition): void {
+		new VariableEditorModal(
+			this.app,
+			name,
+			name,
+			definition,
+			new Set(Object.keys(this.state.variables)),
+			this.specialVariables,
+			(updatedName, updatedDefinition) => {
+				let entries = Object.entries(this.state.variables).map(([entryName, entryDefinition]) =>
+					entryName === name ? ([updatedName, updatedDefinition] as const) : ([entryName, entryDefinition] as const),
+				);
+				this.state.variables = Object.fromEntries(entries);
+				this.render();
+			},
+		).open();
+	}
+
+	private openNewVariableEditor(): void {
+		let index = 1;
+		while (`variable${index}` in this.state.variables) index += 1;
+		new VariableEditorModal(
+			this.app,
+			null,
+			`variable${index}`,
+			{ type: 'text' },
+			new Set(Object.keys(this.state.variables)),
+			this.specialVariables,
+			(name, definition) => {
+				this.state.variables[name] = definition;
+				this.render();
+			},
+		).open();
+	}
+
+	private moveVariable(fromIndex: number, toIndex: number): void {
+		let entries = Object.entries(this.state.variables);
+		let [entry] = entries.splice(fromIndex, 1);
+		if (!entry) return;
+		entries.splice(toIndex, 0, entry);
+		this.state.variables = Object.fromEntries(entries);
+		this.render();
 	}
 
 	/** Renders the output configuration fields. */
@@ -408,11 +311,11 @@ export class TemplateMetadataEditorModal extends Modal {
 		return validateEditableTemplateMetadata(this.file.path, this.originalContent, this.state, this.otherIds, this.specialVariables);
 	}
 
-	/** Re-renders the YAML preview textarea and the validation status. */
+	/** Re-renders the YAML preview code block and the validation status. */
 	private updatePreview(): void {
 		try {
 			let document = this.frontmatter.parse(this.mergedContent());
-			if (this.previewEl) this.previewEl.value = this.frontmatter.serialize(document.data);
+			this.previewEl?.setText(this.frontmatter.serialize(document.data));
 
 			let issues = this.getIssues();
 			if (this.validationEl) {

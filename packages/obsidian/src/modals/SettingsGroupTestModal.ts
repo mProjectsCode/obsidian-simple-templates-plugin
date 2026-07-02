@@ -5,6 +5,7 @@ import { Modal, SettingGroup } from 'obsidian';
 export class SettingsGroupTestModal extends Modal {
 	constructor(app: App) {
 		super(app);
+		this.modalEl.addClass('simple-templates-modal');
 	}
 
 	override onOpen(): void {
