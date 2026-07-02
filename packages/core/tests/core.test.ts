@@ -34,9 +34,7 @@ const SPECIAL_VARIABLES = new SpecialVariableRegistry()
 	});
 const TEMPLATE_PARSER = new TemplateParser(SPECIAL_VARIABLES);
 const PROGRAM_PARSER = new TemplateProgramParser();
-const TEMPLATE_RENDERER = new TemplateRenderer(PROGRAM_PARSER);
 const FRONTMATTER = new FrontmatterService();
-const PATHS = new OutputPathResolver(TEMPLATE_RENDERER);
 
 class MockExpressionEvaluator extends ExpressionEvaluator {
 	readonly calls: { expression: string; values: ResolvedVariables; sourcePath?: string }[] = [];
@@ -44,6 +42,15 @@ class MockExpressionEvaluator extends ExpressionEvaluator {
 	override async evaluate(expression: string, values: ResolvedVariables, sourcePath?: string): Promise<unknown> {
 		this.calls.push({ expression, values: structuredClone(values), ...(sourcePath ? { sourcePath } : {}) });
 		switch (expression) {
+			case 'date == today() && status == "done"':
+				return values.date === 'today' && values.status === 'done';
+			case 'tasks.filter(x => x.status == "done").map(x => x.name).join(", ")':
+				return (values.tasks as { name: string; status: string }[])
+					.filter(item => item.status === 'done')
+					.map(item => item.name)
+					.join(', ');
+			case '({ done: true }).done':
+				return true;
 			case 'title.toLowerCase().replaceAll(" ", "-")':
 				return this.stringInput(values, 'title').toLowerCase().replaceAll(' ', '-');
 			case 'slug.toUpperCase()':
@@ -51,6 +58,12 @@ class MockExpressionEvaluator extends ExpressionEvaluator {
 			case 'base?.toUpperCase() ?? ""':
 				return values.base === undefined ? '' : this.stringInput(values, 'base').toUpperCase();
 			default:
+				if (/^[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*$/.test(expression)) {
+					let value: unknown = values;
+					for (let part of expression.split('.'))
+						value = value !== null && typeof value === 'object' ? (value as Record<string, unknown>)[part] : undefined;
+					return value;
+				}
 				throw new FormulaError(`Unknown test expression: ${expression}`);
 		}
 	}
@@ -63,6 +76,8 @@ class MockExpressionEvaluator extends ExpressionEvaluator {
 }
 
 const EXPRESSIONS = new MockExpressionEvaluator();
+const TEMPLATE_RENDERER = new TemplateRenderer(EXPRESSIONS, PROGRAM_PARSER);
+const PATHS = new OutputPathResolver();
 
 async function rejected(promise: Promise<unknown>): Promise<Error> {
 	try {
@@ -198,33 +213,84 @@ body`,
 });
 
 describe('renderer and expressions', () => {
-	test('builds a source-located AST and renders nested conditionals', () => {
-		let program = PROGRAM_PARSER.parse('Hi {{ user.name }}{{#if enabled}}!{{#if extra}}+{{ extra }}{{/if}}{{/if}}');
+	test('builds a source-located AST and renders nested conditional branches', async () => {
+		let program = PROGRAM_PARSER.parse('Hi {{ user.name }}{{#if enabled}}!{{#if extra}}+{{ extra }}{{else}}?{{/if}}{{else}} no{{/if}}');
 		expect(program.references).toEqual(['user', 'enabled', 'extra']);
-		expect(program.nodes.map(node => node.type)).toEqual(['text', 'variable', 'if']);
-		expect(program.nodes[1]).toMatchObject({ type: 'variable', path: 'user.name', parts: ['user', 'name'], start: 3, end: 18 });
-		expect(TEMPLATE_RENDERER.renderProgram(program, { user: { name: 'Ada' }, enabled: true, extra: 'yes' })).toBe('Hi Ada!+yes');
-		expect(TEMPLATE_RENDERER.renderProgram(program, { user: { name: 'Ada' }, enabled: false, extra: 'yes' })).toBe('Hi Ada');
+		expect(program.nodes.map(node => node.type)).toEqual(['text', 'expression', 'if']);
+		expect(program.nodes[1]).toMatchObject({ type: 'expression', expression: 'user.name', start: 3, end: 18 });
+		expect(await TEMPLATE_RENDERER.renderProgram(program, { user: { name: 'Ada' }, enabled: true, extra: 'yes' })).toBe('Hi Ada!+yes');
+		expect(await TEMPLATE_RENDERER.renderProgram(program, { user: { name: 'Ada' }, enabled: true, extra: '' })).toBe('Hi Ada!?');
+		expect(await TEMPLATE_RENDERER.renderProgram(program, { user: { name: 'Ada' }, enabled: false, extra: 'yes' })).toBe('Hi Ada no');
+	});
+
+	test('supports arbitrary else-if branches and stops after the first match', async () => {
+		let evaluator = new MockExpressionEvaluator();
+		let renderer = new TemplateRenderer(evaluator, PROGRAM_PARSER);
+		let template = '{{#if first}}1{{else if second}}2{{else if third}}3{{else if fourth}}4{{else}}fallback{{/if}}';
+		let program = PROGRAM_PARSER.parse(template);
+		expect(program.references).toEqual(['first', 'second', 'third', 'fourth']);
+		expect(await renderer.renderProgram(program, { first: false, second: false, third: true, fourth: true })).toBe('3');
+		expect(evaluator.calls.map(call => call.expression)).toEqual(['first', 'second', 'third']);
 	});
 
 	test('reports malformed template syntax with an exact source offset', () => {
-		expect(() => PROGRAM_PARSER.parse('{{ bad-path }}')).toThrow('offset 0');
-		expect(() => PROGRAM_PARSER.parse('{{#if show}}missing close')).toThrow('Unclosed {{#if show}}');
-		expect(() => PROGRAM_PARSER.parse('{{/if}}')).toThrow('Unexpected {{/if}}');
+		expect(() => PROGRAM_PARSER.parse('{{ value { nope }}')).toThrow('offset');
+		expect(() => PROGRAM_PARSER.parse('{{#if show}}missing close')).toThrow('offset');
+		expect(() => PROGRAM_PARSER.parse('{{/if}}')).toThrow('offset 2');
 	});
 
-	test('renders nested values, arrays, missing values, and conditionals', () => {
-		let rendered = TEMPLATE_RENDERER.render(
-			'{{ user.name }}\n{{ tags }}\n{{ absent }}{{#if show}}yes{{/if}}',
-			{
-				user: { name: 'Ada' },
-				tags: ['one', 'two'],
-				show: true,
-			},
-			new Set(['user', 'tags', 'absent', 'show']),
-		);
+	test('distinguishes tag boundaries, keywords, identifiers, and ordinary backslashes', () => {
+		let program = PROGRAM_PARSER.parse('single { brace } \\ path {{ elsewhere }} {{ user?.name }}');
+		expect(program.nodes).toMatchObject([
+			{ type: 'text', value: 'single { brace } \\ path ' },
+			{ type: 'expression', expression: 'elsewhere' },
+			{ type: 'text', value: ' ' },
+			{ type: 'expression', expression: 'user?.name' },
+		]);
+		expect(program.references).toEqual(['elsewhere', 'user']);
+
+		let loop = PROGRAM_PARSER.parse('{{#for $item in items}}{{ $item }}{{empty}}none{{/for}}');
+		expect(loop.references).toEqual(['items']);
+		expect(() => PROGRAM_PARSER.parse('{{else}}')).toThrow('offset');
+		expect(() => PROGRAM_PARSER.parse('{{else if condition}}')).toThrow('offset');
+		expect(() => PROGRAM_PARSER.parse('{{empty}}')).toThrow('offset');
+	});
+
+	test('renders expressions through Safe JS and unescapes expression braces', async () => {
+		let example = PROGRAM_PARSER.parse('Completed Tasks: {{ tasks.filter(x => x.status == "done").join(", ") }}');
+		expect(example.nodes[1]).toMatchObject({
+			type: 'expression',
+			expression: 'tasks.filter(x => x.status == "done").join(", ")',
+		});
+		let rendered = await TEMPLATE_RENDERER.render('{{ user.name }}\n{{ tags }}\n{{ absent }}{{#if show}}yes{{/if}}', {
+			user: { name: 'Ada' },
+			tags: ['one', 'two'],
+			show: true,
+		});
 		expect(rendered).toBe('Ada\none\ntwo\nyes');
-		expect(() => TEMPLATE_RENDERER.render('{{ unknown }}', {}, new Set())).toThrow(TemplateValidationError);
+		expect(await TEMPLATE_RENDERER.render('{{ (\\{ done: true \\}).done }}', {})).toBe('true');
+		expect(
+			await TEMPLATE_RENDERER.render('{{#if date == today() && status == "done"}}yes{{else}}no{{/if}}', {
+				date: 'today',
+				status: 'done',
+			}),
+		).toBe('yes');
+		expect(
+			await TEMPLATE_RENDERER.render('Completed tasks: {{ tasks.filter(x => x.status == "done").map(x => x.name).join(", ") }}', {
+				tasks: [
+					{ name: 'A', status: 'done' },
+					{ name: 'B', status: 'open' },
+				],
+			}),
+		).toBe('Completed tasks: A');
+	});
+
+	test('coerces loop values and supports else and empty fallbacks', async () => {
+		let withEmpty = '{{#for task in tasks}}[{{ task.name }}]{{empty}}none{{/for}}';
+		expect(await TEMPLATE_RENDERER.render(withEmpty, { tasks: [{ name: 'A' }, { name: 'B' }] })).toBe('[A][B]');
+		expect(await TEMPLATE_RENDERER.render(withEmpty, { tasks: [] })).toBe('none');
+		expect(await TEMPLATE_RENDERER.render('{{#for item in value}}{{ item }}{{else}}empty{{/for}}', { value: 'one' })).toBe('one');
+		expect(await TEMPLATE_RENDERER.render('{{#for item in value}}{{ item }}{{else}}empty{{/for}}', { value: '' })).toBe('empty');
 	});
 
 	test('delegates expressions and source context through the core abstraction', async () => {
@@ -360,6 +426,7 @@ describe('frontmatter editing and complete rendering', () => {
 			'---\ntemplate:\n  id: x\n  name: X\n---\nBody',
 		);
 	});
+
 	test('preserves unknown metadata and body exactly', () => {
 		let content = '---\ntemplate:\n  id: old\ncssclasses: [wide]\n---\nBody\n```note-frontmatter\na: b\n```\n';
 		let merged = FRONTMATTER.mergeTemplate(content, { template: { id: 'new', name: 'New' }, variables: {}, output: undefined });

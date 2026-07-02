@@ -1,76 +1,99 @@
 import type { RenderedTemplateAst, TemplateAst, TemplateNode, TemplateProgram } from 'packages/core/src/domain/TemplateAst';
-import { TemplateValidationError } from 'packages/core/src/domain/Errors';
 import type { ResolvedVariables } from 'packages/core/src/domain/Types';
+import type { ExpressionEvaluator } from 'packages/core/src/expressions/ExpressionEvaluator';
 import { TemplateProgramParser } from 'packages/core/src/templates/TemplateProgramParser';
 
-/** Renders template programs and owns the parser used for raw template strings. */
+/** Evaluates and renders compiled template programs. */
 export class TemplateRenderer {
-	constructor(private readonly parser = new TemplateProgramParser()) {}
+	constructor(
+		private readonly expressions: ExpressionEvaluator,
+		private readonly parser = new TemplateProgramParser(),
+	) {}
 
-	renderProgram(program: TemplateProgram, values: ResolvedVariables, declared?: ReadonlySet<string>): string {
+	async renderProgram(program: TemplateProgram, values: ResolvedVariables, sourcePath?: string): Promise<string> {
 		let output: string[] = [];
-		this.renderNodes(program.nodes, values, declared, output);
+		await this.renderNodes(program.nodes, values, sourcePath, output);
 		return output.join('');
 	}
 
-	render(template: string | TemplateProgram, values: ResolvedVariables, declared?: ReadonlySet<string>): string {
-		return this.renderProgram(typeof template === 'string' ? this.parser.parse(template) : template, values, declared);
+	async render(template: string | TemplateProgram, values: ResolvedVariables, sourcePath?: string): Promise<string> {
+		return this.renderProgram(typeof template === 'string' ? this.parser.parse(template) : template, values, sourcePath);
 	}
 
-	renderAst(ast: TemplateAst, values: ResolvedVariables, declared?: ReadonlySet<string>): RenderedTemplateAst {
+	async renderAst(ast: TemplateAst, values: ResolvedVariables, sourcePath?: string): Promise<RenderedTemplateAst> {
 		return {
-			body: this.renderProgram(ast.body, values, declared),
-			...(ast.noteFrontmatter ? { noteFrontmatter: this.renderProgram(ast.noteFrontmatter, values, declared) } : {}),
-			...(ast.filename ? { filename: this.renderProgram(ast.filename, values, declared) } : {}),
-			...(ast.folder ? { folder: this.renderProgram(ast.folder, values, declared) } : {}),
+			body: await this.renderProgram(ast.body, values, sourcePath),
+			...(ast.noteFrontmatter ? { noteFrontmatter: await this.renderProgram(ast.noteFrontmatter, values, sourcePath) } : {}),
+			...(ast.filename ? { filename: await this.renderProgram(ast.filename, values, sourcePath) } : {}),
+			...(ast.folder ? { folder: await this.renderProgram(ast.folder, values, sourcePath) } : {}),
 		};
 	}
 
-	findReferences(...templates: (string | TemplateProgram | undefined)[]): Set<string> {
-		let references = new Set<string>();
-		for (let template of templates) {
-			if (template === undefined) continue;
-			let program = typeof template === 'string' ? this.parser.parse(template) : template;
-			for (let reference of program.references) references.add(reference);
-		}
-		return references;
-	}
-
-	private renderNodes(
+	private async renderNodes(
 		nodes: readonly TemplateNode[],
 		values: ResolvedVariables,
-		declared: ReadonlySet<string> | undefined,
+		sourcePath: string | undefined,
 		output: string[],
-	): void {
+	): Promise<void> {
 		for (let node of nodes) {
 			if (node.type === 'text') {
 				output.push(node.value);
 				continue;
 			}
-			let root = node.parts[0] ?? '';
-			if (declared && !declared.has(root)) throw new TemplateValidationError(`Variable "${root}" is not declared.`);
-			let value = this.lookup(values, node.parts);
+
 			if (node.type === 'if') {
-				if (value) this.renderNodes(node.children, values, declared, output);
-			} else output.push(this.renderValue(value));
+				let matched = false;
+				for (let branch of node.branches) {
+					let value = await this.expressions.evaluate(branch.expression, values, sourcePath);
+					if (!this.isTruthy(value)) continue;
+					await this.renderNodes(branch.children, values, sourcePath, output);
+					matched = true;
+					break;
+				}
+				if (!matched) await this.renderNodes(node.elseChildren, values, sourcePath, output);
+				continue;
+			}
+
+			let value = await this.expressions.evaluate(node.expression, values, sourcePath);
+			if (node.type === 'expression') {
+				output.push(this.renderValue(value));
+			} else {
+				let items = this.toItems(value);
+				if (items.length === 0) {
+					await this.renderNodes(node.emptyChildren, values, sourcePath, output);
+					continue;
+				}
+				for (let item of items) {
+					await this.renderNodes(node.children, { ...values, [node.variable]: item }, sourcePath, output);
+				}
+			}
 		}
 	}
 
-	private lookup(values: ResolvedVariables, parts: readonly string[]): unknown {
-		let cursor: unknown = values;
-		for (let part of parts) {
-			if (cursor === null || typeof cursor !== 'object') return undefined;
-			cursor = (cursor as Record<string, unknown>)[part];
-		}
-		return cursor;
+	private isTruthy(value: unknown): boolean {
+		if (value === null || value === undefined || value === false) return false;
+		if (typeof value === 'string' || Array.isArray(value)) return value.length > 0;
+		if (typeof value === 'number') return value !== 0 && !Number.isNaN(value);
+		if (typeof value === 'bigint') return value !== 0n;
+		return true;
+	}
+
+	private toItems(value: unknown): readonly unknown[] {
+		if (Array.isArray(value)) return value;
+		if (value === null || value === undefined || value === false || value === '') return [];
+		return [value];
 	}
 
 	private renderValue(value: unknown): string {
 		if (value === undefined || value === null) return '';
 		if (Array.isArray(value)) return value.map(item => this.renderValue(item)).join('\n');
-		if (typeof value === 'object') return JSON.stringify(value);
 		if (typeof value === 'string') return value;
-		if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') return value.toString();
-		return '';
+		if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') return String(value);
+		try {
+			let serialized = JSON.stringify(value);
+			return serialized ?? '';
+		} catch {
+			return '';
+		}
 	}
 }

@@ -1,11 +1,8 @@
 import { FileConflictError, TemplateValidationError } from 'packages/core/src/domain/Errors';
-import type { ExecutionContext, FileConflictStrategy, OutputFolderDefinition, ResolvedVariables } from 'packages/core/src/domain/Types';
-import { TemplateRenderer } from 'packages/core/src/templates/TemplateRenderer';
+import type { ExecutionContext, FileConflictStrategy, OutputFolderDefinition } from 'packages/core/src/domain/Types';
 
 /** Centralizes vault-relative output folder, filename, and conflict handling. */
 export class OutputPathResolver {
-	constructor(private readonly renderer = new TemplateRenderer()) {}
-
 	normalizeFolder(path: string): string {
 		let normalized = path.replaceAll('\\', '/').trim();
 		if (/^(?:\/|[a-zA-Z]:\/)/.test(normalized)) throw new TemplateValidationError('Output folder must be vault-relative.');
@@ -18,7 +15,6 @@ export class OutputPathResolver {
 		definition: OutputFolderDefinition | undefined,
 		context: ExecutionContext,
 		defaultOutputFolderPath: string,
-		values: ResolvedVariables,
 		renderedPath?: string,
 	): { folder: string; usedFallback: boolean } {
 		let selected = definition ?? { mode: 'default' as const };
@@ -27,17 +23,12 @@ export class OutputPathResolver {
 				? { folder: this.normalizeFolder(defaultOutputFolderPath), usedFallback: true }
 				: { folder: this.normalizeFolder(context.activeFileFolder), usedFallback: false };
 		}
-		let path =
-			selected.mode === 'path'
-				? (renderedPath ?? this.renderer.render(selected.path, values, new Set(Object.keys(values))))
-				: defaultOutputFolderPath;
+		let path = selected.mode === 'path' ? (renderedPath ?? selected.path) : defaultOutputFolderPath;
 		return { folder: this.normalizeFolder(path), usedFallback: false };
 	}
 
-	resolveFilename(template: string, values: ResolvedVariables, renderedTemplate?: string): string {
-		let rendered = (renderedTemplate ?? this.renderer.render(template, values, new Set(Object.keys(values))))
-			.trim()
-			.replace(/\s+/g, ' ');
+	resolveFilename(renderedTemplate: string): string {
+		let rendered = renderedTemplate.trim().replace(/\s+/g, ' ');
 		if (rendered.includes('/') || rendered.includes('\\'))
 			throw new TemplateValidationError('Output filename cannot contain path separators.');
 		let cleaned = [...rendered]

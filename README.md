@@ -43,6 +43,31 @@ The metadata editor commands can edit existing Markdown files in the template fo
 
 Formula fields contain Safe JS expressions. Variables are evaluated in their frontmatter declaration order, so an expression can use ordinary variables and formula variables declared above it. Safe JS also provides its permissionless expression utilities such as `today()`, `now()`, and `duration()`.
 
+Template tags also contain Safe JS expressions:
+
+```text
+{{ title.toUpperCase() }}
+{{ tasks.filter(task => task.status == "done").map(task => task.name).join(", ") }}
+
+{{#if date == today() && status == "done"}}
+Done
+{{else if status == "blocked"}}
+Blocked
+{{else}}
+Not done
+{{/if}}
+
+{{#for task in tasks}}
+- {{ task.name }}
+{{empty}}
+No tasks
+{{/for}}
+```
+
+An `if` may contain any number of `{{else if expression}}` branches followed by an optional `{{else}}`. Use `{{else}}` or `{{empty}}` for a `for` fallback. Arrays are iterated directly. An empty string, `false`, `null`, or missing value is empty; any other non-array value is treated as a one-item list. Empty strings and arrays are also false in an `if`.
+
+Because `}}` closes a template tag, escape JavaScript braces inside expressions as `\{` and `\}`. The escapes are removed before evaluation. For example: `{{ (\{ status: "done" \}).status }}`.
+
 ## Commands
 
 - Templates: Create note from template

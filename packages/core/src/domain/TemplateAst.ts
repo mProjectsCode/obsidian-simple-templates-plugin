@@ -9,21 +9,32 @@ export interface TextNode extends SourceSpan {
 	value: string;
 }
 
-export interface VariableNode extends SourceSpan {
-	type: 'variable';
-	path: string;
-	parts: readonly string[];
+export interface ExpressionNode extends SourceSpan {
+	type: 'expression';
+	expression: string;
+}
+
+export interface IfBranch {
+	expression: string;
+	children: readonly TemplateNode[];
 }
 
 export interface IfNode extends SourceSpan {
 	type: 'if';
-	path: string;
-	parts: readonly string[];
+	branches: readonly IfBranch[];
+	elseChildren: readonly TemplateNode[];
+}
+
+export interface ForNode extends SourceSpan {
+	type: 'for';
+	variable: string;
+	expression: string;
 	children: readonly TemplateNode[];
+	emptyChildren: readonly TemplateNode[];
 }
 
 /** The only Markdown-adjacent syntax understood by the core engine. */
-export type TemplateNode = TextNode | VariableNode | IfNode;
+export type TemplateNode = TextNode | ExpressionNode | IfNode | ForNode;
 
 /** A compiled template string that can be validated and rendered repeatedly. */
 export interface TemplateProgram {

@@ -18,6 +18,7 @@ import { VariableResolver } from 'packages/core/src/variables/VariableResolver';
  */
 export class TemplateEngine {
 	private readonly variables: VariableResolver;
+	private readonly renderer: TemplateRenderer;
 
 	constructor(
 		specialVariables: SpecialVariableRegistry<unknown>,
@@ -25,9 +26,9 @@ export class TemplateEngine {
 		private readonly frontmatter = new FrontmatterService(),
 		private readonly paths = new OutputPathResolver(),
 		private readonly programParser = new TemplateProgramParser(),
-		private readonly renderer = new TemplateRenderer(programParser),
 	) {
 		this.variables = new VariableResolver(specialVariables, expressions);
+		this.renderer = new TemplateRenderer(expressions, programParser);
 	}
 
 	async render(
@@ -37,7 +38,6 @@ export class TemplateEngine {
 		defaultOutputFolderPath: string,
 	): Promise<RenderedNote & { values: ResolvedVariables; usedFolderFallback: boolean }> {
 		let values = await this.variables.resolve(template.variables, context, userValues, template.sourcePath);
-		let declared = new Set(Object.keys(template.variables));
 		let ast =
 			template.ast ??
 			({
@@ -51,7 +51,7 @@ export class TemplateEngine {
 					? { folder: this.programParser.parse(template.output.folder.path) }
 					: {}),
 			} as const);
-		let rendered = this.renderer.renderAst(ast, values, declared);
+		let rendered = await this.renderer.renderAst(ast, values, template.sourcePath);
 		let outputFrontmatter = rendered.noteFrontmatter?.trim() ?? '';
 
 		// Validate the rendered frontmatter is parseable YAML
@@ -60,18 +60,12 @@ export class TemplateEngine {
 		// Prepend frontmatter delimiters if an output frontmatter was produced
 		let content = outputFrontmatter ? `---\n${outputFrontmatter}\n---\n${rendered.body}` : rendered.body;
 
-		let { folder, usedFallback } = this.paths.resolveFolder(
-			template.output?.folder,
-			context,
-			defaultOutputFolderPath,
-			values,
-			rendered.folder,
-		);
+		let { folder, usedFallback } = this.paths.resolveFolder(template.output?.folder, context, defaultOutputFolderPath, rendered.folder);
 
 		return {
 			content,
 			folder,
-			filename: this.paths.resolveFilename(template.output?.filename ?? template.name, values, rendered.filename),
+			filename: this.paths.resolveFilename(rendered.filename ?? template.name),
 			conflict: template.output?.conflict ?? 'prompt',
 			openAfterCreate: template.output?.openAfterCreate ?? true,
 			values,

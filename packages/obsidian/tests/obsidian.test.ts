@@ -1,8 +1,13 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
+import { MockTFile } from 'packages/obsidian/tests/ObsidianMock';
 import { FormulaError } from 'packages/core/src/index';
 import { SafeJsExpressionEvaluator } from 'packages/obsidian/src/expressions/SafeJsExpressionEvaluator';
 import { createEditableTemplateMetadata, mergeEditableTemplateMetadata } from 'packages/obsidian/src/modals/TemplateMetadataState';
+import { FilePickerModal } from 'packages/obsidian/src/modals/FilePickerModal';
+import { TemplatePickerModal } from 'packages/obsidian/src/modals/TemplatePickerModal';
+import { VariableInputModal } from 'packages/obsidian/src/modals/VariableInputModal';
 import { pathAffectsTemplateRegistry } from 'packages/obsidian/src/templates/RegistryPaths';
+import { TemplateRegistry } from 'packages/obsidian/src/templates/TemplateRegistry';
 import { createObsidianSpecialVariableRegistry, getRequiredObsidianContext } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
 import type { SafeJsExecutionResult, SafeJsExpressionOptions } from '@lemons_dev/obsidian-safe-js-api';
 
@@ -30,41 +35,6 @@ async function rejected(promise: Promise<unknown>): Promise<Error> {
 	}
 	throw new Error('Expected the promise to reject.');
 }
-
-class MockTFile {
-	constructor(readonly path: string) {}
-}
-
-class MockFuzzySuggestModal {
-	modalEl = { addClass: (_className: string) => undefined };
-	setPlaceholder(_placeholder: string): void {}
-	open(): void {}
-	onClose(): void {}
-}
-
-class MockModal {
-	contentEl = { empty: () => undefined };
-	modalEl = { addClass: (_className: string) => undefined };
-	open(): void {}
-	close(): void {
-		this.onClose();
-	}
-	onClose(): void {}
-}
-
-class MockSettingGroup {}
-
-void mock.module('obsidian', () => ({
-	FuzzySuggestModal: MockFuzzySuggestModal,
-	Modal: MockModal,
-	SettingGroup: MockSettingGroup,
-	TFile: MockTFile,
-}));
-
-const { TemplateRegistry } = await import('packages/obsidian/src/templates/TemplateRegistry');
-const { FilePickerModal } = await import('packages/obsidian/src/modals/FilePickerModal');
-const { TemplatePickerModal } = await import('packages/obsidian/src/modals/TemplatePickerModal');
-const { VariableInputModal } = await import('packages/obsidian/src/modals/VariableInputModal');
 
 describe('Safe JS expression adapter', () => {
 	test('maps the core contract to JSON-safe Safe JS expression calls', async () => {

@@ -36,6 +36,7 @@
 		"vite-plugin-static-copy": "^4.1.0"
 	},
 	"dependencies": {
+		"@lemons_dev/parsinom": "^0.2.1",
 		"yaml": "^2.9.0"
 	}
 }

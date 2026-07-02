@@ -5,8 +5,9 @@ import type {
 	VariableDefinition,
 	VariableType,
 } from 'packages/core/src/domain/Types';
+import type { TemplateProgram } from 'packages/core/src/domain/TemplateAst';
 import { VARIABLE_TYPES } from 'packages/core/src/domain/Types';
-import { TemplateRenderer } from 'packages/core/src/templates/TemplateRenderer';
+import { TemplateProgramParser } from 'packages/core/src/templates/TemplateProgramParser';
 import type { SpecialVariableRegistry } from 'packages/core/src/variables/SpecialVariableRegistry';
 
 const VARIABLE_TYPE_SET = new Set<VariableType>(VARIABLE_TYPES);
@@ -15,7 +16,7 @@ const VARIABLE_TYPE_SET = new Set<VariableType>(VARIABLE_TYPES);
 export class TemplateValidator {
 	constructor(
 		private readonly specialVariables: SpecialVariableRegistry<unknown>,
-		private readonly renderer = new TemplateRenderer(),
+		private readonly parser = new TemplateProgramParser(),
 	) {}
 
 	/** Validates a single variable definition's fields. */
@@ -194,9 +195,9 @@ export class TemplateValidator {
 		// Delegate to sub-validators
 		issues.push(...this.validateVariableDefinitions(template.variables), ...this.validateOutput(template.output));
 
-		// Check that every `{{var}}` / `{{#if var}}` reference in the template
-		// body matches a declared variable.
-		let references = this.renderer.findReferences(
+		// Simple variable paths can be checked statically. Safe JS expressions
+		// are intentionally deferred to the sandbox evaluator.
+		let references = this.findReferences(
 			template.ast?.body ?? template.body,
 			template.ast?.noteFrontmatter ?? template.outputFrontmatterTemplate,
 			template.ast?.filename ?? (typeof template.output?.filename === 'string' ? template.output.filename : undefined),
@@ -212,6 +213,16 @@ export class TemplateValidator {
 				});
 
 		return issues;
+	}
+
+	private findReferences(...templates: (string | TemplateProgram | undefined)[]): Set<string> {
+		let references = new Set<string>();
+		for (let template of templates) {
+			if (template === undefined) continue;
+			let program = typeof template === 'string' ? this.parser.parse(template) : template;
+			for (let reference of program.references) references.add(reference);
+		}
+		return references;
 	}
 
 	validateMetadata(data: Record<string, unknown>): ValidationIssue[] {

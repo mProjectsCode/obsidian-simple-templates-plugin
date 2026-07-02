@@ -1,91 +1,202 @@
-import type { IfNode, TemplateNode, TemplateProgram } from 'packages/core/src/domain/TemplateAst';
+import { P, P_HELPERS, P_UTILS } from '@lemons_dev/parsinom';
+import type { Parser, ParsingRange } from '@lemons_dev/parsinom';
 import { TemplateParseError } from 'packages/core/src/domain/Errors';
+import type {
+	ExpressionNode,
+	ForNode,
+	IfBranch,
+	IfNode,
+	TemplateNode,
+	TemplateProgram,
+	TextNode,
+} from 'packages/core/src/domain/TemplateAst';
 
-interface IfFrame {
-	node: IfNode;
-	children: TemplateNode[];
+interface OpenExpression {
+	expression: string;
+	range: ParsingRange;
 }
 
-/** Compiles source strings into reusable template programs. */
+interface OpenFor extends OpenExpression {
+	variable: string;
+}
+
+interface TemplateGrammar {
+	program: TemplateNode[];
+	nodes: TemplateNode[];
+	node: TemplateNode;
+	ifNode: IfNode;
+	forNode: ForNode;
+	expressionNode: ExpressionNode;
+	textNode: TextNode;
+}
+
+const OPTIONAL_WHITESPACE = P_UTILS.optionalWhitespace();
+const IDENTIFIER_START = P.or(P_UTILS.letter(), P.oneOf('_$'));
+const IDENTIFIER_PART = P.or(IDENTIFIER_START, P_UTILS.digit());
+const IDENTIFIER = P.sequenceMap((first, rest) => first + rest.join(''), IDENTIFIER_START, IDENTIFIER_PART.many()).describe(
+	'an identifier',
+);
+const SIMPLE_PATH = P.sequenceMap(
+	(root, _properties) => root,
+	IDENTIFIER,
+	P.or(P.string('?.'), P.string('.')).then(IDENTIFIER).many(),
+).thenEof();
+const ESCAPED_BRACE = P.or(P.string('\\{').result('{'), P.string('\\}').result('}'));
+const ORDINARY_BACKSLASH = P.string('\\').notFollowedBy(P.oneOf('{}'));
+const EXPRESSION_CHARACTER = P.or(ESCAPED_BRACE, ORDINARY_BACKSLASH, P.noneOf('{}\\'));
+const TEXT_CHARACTER = P_HELPERS.notFollowedBy(P.string('{{')).then(P_UTILS.any());
+
+/**
+ * Parses a Safe JS expression up to a tag's closing braces.
+ *
+ * Braces belonging to JavaScript must be written as `\{` and `\}`. The
+ * escapes are removed before the expression is sent to Safe JS.
+ */
+function expression(): Parser<string> {
+	return EXPRESSION_CHARACTER.many()
+		.map(characters => characters.join('').trim())
+		.chain(value => (value ? P.succeed(value) : P.fail('a non-empty Safe JS expression')));
+}
+
+function tagEnd(): Parser<string> {
+	return P.string('}}');
+}
+
+function ifOpening(): Parser<OpenExpression> {
+	return P.string('{{')
+		.then(OPTIONAL_WHITESPACE)
+		.then(P.string('#if'))
+		.skip(P_UTILS.whitespace())
+		.then(expression())
+		.skip(tagEnd())
+		.node((value, range) => ({ expression: value, range }));
+}
+
+function elseIfOpening(): Parser<OpenExpression> {
+	return P.string('else')
+		.skip(P_UTILS.whitespace())
+		.skip(P.string('if'))
+		.skip(P_UTILS.whitespace())
+		.then(expression())
+		.wrap(P.string('{{').then(OPTIONAL_WHITESPACE), tagEnd())
+		.node((value, range) => ({ expression: value, range }));
+}
+
+function forOpening(): Parser<OpenFor> {
+	return P.sequenceMap(
+		(variable, value) => ({ variable, expression: value }),
+		IDENTIFIER,
+		P_UTILS.whitespace().then(P.string('in')).then(P_UTILS.whitespace()).then(expression()),
+	)
+		.wrap(P.string('{{').then(OPTIONAL_WHITESPACE).then(P.string('#for')).then(P_UTILS.whitespace()), tagEnd())
+		.node((value, range) => ({ ...value, range }));
+}
+
+function keywordTag(keyword: string): Parser<ParsingRange> {
+	return P.string(keyword)
+		.wrap(P.string('{{').then(OPTIONAL_WHITESPACE), OPTIONAL_WHITESPACE.then(tagEnd()))
+		.node((_value, range) => range);
+}
+
+const ELSE_TAG = keywordTag('else');
+const EMPTY_TAG = keywordTag('empty');
+const END_IF_TAG = keywordTag('/if');
+const END_FOR_TAG = keywordTag('/for');
+const RESERVED_TAG = OPTIONAL_WHITESPACE.then(
+	P.or(
+		P.oneOf('#/'),
+		P.string('else').skip(P.or(P_UTILS.whitespace(), tagEnd())),
+		P.string('empty').skip(OPTIONAL_WHITESPACE).skip(tagEnd()),
+	),
+);
+
+const LANGUAGE = P.createLanguage<TemplateGrammar>({
+	program: (_language, ref) => ref.nodes.thenEof(),
+	nodes: (_language, ref) => ref.node.many(),
+	node: (_language, ref) => P.or(ref.ifNode, ref.forNode, ref.expressionNode, ref.textNode),
+	ifNode: (_language, ref) =>
+		P.sequenceMap(
+			(open, children, additionalBranches, elseChildren, close) => ({
+				type: 'if' as const,
+				branches: [
+					{ expression: open.expression, children },
+					...additionalBranches.map(([branch, branchChildren]): IfBranch => ({
+						expression: branch.expression,
+						children: branchChildren,
+					})),
+				],
+				elseChildren,
+				start: open.range.from,
+				end: close.to,
+			}),
+			ifOpening(),
+			ref.nodes,
+			P.sequence(elseIfOpening(), ref.nodes).many(),
+			ELSE_TAG.then(ref.nodes).optional([]),
+			END_IF_TAG,
+		),
+	forNode: (_language, ref) =>
+		P.sequenceMap(
+			(open, children, emptyChildren, close) => ({
+				type: 'for' as const,
+				variable: open.variable,
+				expression: open.expression,
+				children,
+				emptyChildren,
+				start: open.range.from,
+				end: close.to,
+			}),
+			forOpening(),
+			ref.nodes,
+			P.or(ELSE_TAG, EMPTY_TAG).then(ref.nodes).optional([]),
+			END_FOR_TAG,
+		),
+	expressionNode: () =>
+		P.string('{{')
+			.notFollowedBy(RESERVED_TAG)
+			.then(OPTIONAL_WHITESPACE)
+			.then(expression())
+			.skip(tagEnd())
+			.node((value, range) => ({ type: 'expression', expression: value, start: range.from, end: range.to })),
+	textNode: () =>
+		TEXT_CHARACTER.atLeast(1)
+			.map(characters => characters.join(''))
+			.node((value, range) => ({ type: 'text', value, start: range.from, end: range.to })),
+});
+
+/** Compiles source strings into reusable template programs using parsiNOM. */
 export class TemplateProgramParser {
 	parse(source: string): TemplateProgram {
-		let root: TemplateNode[] = [];
-		let target = root;
-		let frames: IfFrame[] = [];
+		let result = LANGUAGE.program.tryParse(source);
+		if (!result.success) {
+			let expected = result.expected.length === 1 ? result.expected[0] : result.expected.join(', ');
+			throw new TemplateParseError(`Invalid template syntax at offset ${result.furthest}; expected ${expected}.`);
+		}
 		let references = new Set<string>();
-		let cursor = 0;
-		while (cursor < source.length) {
-			let opening = source.indexOf('{{', cursor);
-			if (opening < 0) {
-				if (cursor < source.length) target.push({ type: 'text', value: source.slice(cursor), start: cursor, end: source.length });
-				break;
-			}
-			if (opening > cursor) target.push({ type: 'text', value: source.slice(cursor, opening), start: cursor, end: opening });
-			let closing = source.indexOf('}}', opening + 2);
-			if (closing < 0) throw new TemplateParseError(`Unclosed template expression at offset ${opening}.`);
-			let expression = this.trim(source.slice(opening + 2, closing));
-			let end = closing + 2;
-			if (expression === '/if') {
-				let frame = frames.pop();
-				if (!frame) throw new TemplateParseError(`Unexpected {{/if}} at offset ${opening}.`);
-				frame.node.end = end;
-				target = frames.at(-1)?.children ?? root;
-			} else {
-				let isIf = expression.startsWith('#if') && this.isWhitespace(expression[3] ?? '');
-				let parsed = this.parsePath(isIf ? this.trim(expression.slice(3)) : expression, opening);
-				references.add(parsed.parts[0] ?? '');
-				if (isIf) {
-					let children: TemplateNode[] = [];
-					let node: IfNode = { type: 'if', ...parsed, children, start: opening, end };
-					target.push(node);
-					frames.push({ node, children });
-					target = children;
-				} else target.push({ type: 'variable', ...parsed, start: opening, end });
-			}
-			cursor = end;
+		this.collectReferences(result.value, new Set(), references);
+		return { type: 'program', nodes: result.value, references: [...references] };
+	}
+
+	private collectReferences(nodes: readonly TemplateNode[], locals: ReadonlySet<string>, references: Set<string>): void {
+		for (let node of nodes) {
+			if (node.type === 'text') continue;
+			if (node.type === 'if') {
+				for (let branch of node.branches) {
+					this.collectSimpleReference(branch.expression, locals, references);
+					this.collectReferences(branch.children, locals, references);
+				}
+				this.collectReferences(node.elseChildren, locals, references);
+			} else if (node.type === 'for') {
+				this.collectSimpleReference(node.expression, locals, references);
+				let loopLocals = new Set(locals).add(node.variable);
+				this.collectReferences(node.children, loopLocals, references);
+				this.collectReferences(node.emptyChildren, locals, references);
+			} else this.collectSimpleReference(node.expression, locals, references);
 		}
-		let unclosed = frames.at(-1);
-		if (unclosed) throw new TemplateParseError(`Unclosed {{#if ${unclosed.node.path}}} block at offset ${unclosed.node.start}.`);
-		references.delete('');
-		return { type: 'program', nodes: root, references: [...references] };
 	}
 
-	private parsePath(value: string, offset: number): { path: string; parts: string[] } {
-		if (!value || !this.isIdentifierStart(value[0] ?? '')) throw new TemplateParseError(`Invalid variable path at offset ${offset}.`);
-		let parts: string[] = [];
-		let partStart = 0;
-		for (let index = 1; index <= value.length; index += 1) {
-			let character = value[index];
-			if (character === '.' || character === undefined) {
-				parts.push(value.slice(partStart, index));
-				partStart = index + 1;
-				if (character === '.' && !this.isIdentifierStart(value[index + 1] ?? ''))
-					throw new TemplateParseError(`Invalid variable path "${value}" at offset ${offset}.`);
-			} else if (!this.isIdentifierPart(character))
-				throw new TemplateParseError(`Invalid variable path "${value}" at offset ${offset}.`);
-		}
-		return { path: value, parts };
-	}
-
-	private trim(value: string): string {
-		let start = 0;
-		let end = value.length;
-		while (start < end && this.isWhitespace(value[start] ?? '')) start += 1;
-		while (end > start && this.isWhitespace(value[end - 1] ?? '')) end -= 1;
-		return value.slice(start, end);
-	}
-
-	private isWhitespace(character: string): boolean {
-		return character === ' ' || character === '\t' || character === '\r' || character === '\n';
-	}
-
-	private isIdentifierStart(character: string): boolean {
-		let code = character.charCodeAt(0);
-		return character === '_' || (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
-	}
-
-	private isIdentifierPart(character: string): boolean {
-		let code = character.charCodeAt(0);
-		return this.isIdentifierStart(character) || (code >= 48 && code <= 57);
+	private collectSimpleReference(expressionSource: string, locals: ReadonlySet<string>, references: Set<string>): void {
+		let result = SIMPLE_PATH.tryParse(expressionSource);
+		if (result.success && !locals.has(result.value)) references.add(result.value);
 	}
 }
