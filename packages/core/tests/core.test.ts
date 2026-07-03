@@ -1,41 +1,68 @@
 import { describe, expect, test } from 'bun:test';
 import {
-	FileConflictError,
 	ExpressionEvaluator,
 	FormulaError,
 	FrontmatterService,
 	MissingRequiredVariableError,
-	OutputPathResolver,
 	TemplateEngine,
 	TemplateParser,
 	TemplateProgramParser,
 	TemplateRenderer,
 	TemplateValidationError,
+	VaultPathService,
 	VariableResolutionError,
 	VariableResolver,
 	SpecialVariableRegistry,
 } from 'packages/core/src/index';
-import type { ExecutionContext, ResolvedVariables, TemplateDefinition, VariableDefinition } from 'packages/core/src/index';
+import type { OutputFolderProvider, ResolvedVariables, TemplateDefinition, VariableDefinition } from 'packages/core/src/index';
 
-const CONTEXT: ExecutionContext = {
+interface TestVariableEnvironment {
+	activeFilePath?: string;
+	activeFileBasename?: string;
+	activeFileFolder?: string | null;
+	activeFileFrontmatter?: Record<string, unknown>;
+	cursor?: { line: number; ch: number };
+	activeFileContent?: string;
+}
+
+const ENVIRONMENT: TestVariableEnvironment = {
 	activeFilePath: 'Projects/Source.md',
 	activeFileBasename: 'Source',
 	activeFileFolder: 'Projects',
 	activeFileFrontmatter: { status: 'active' },
 	cursor: { line: 3, ch: 4 },
 };
-const SPECIAL_VARIABLES = new SpecialVariableRegistry()
+const SPECIAL_VARIABLES = new SpecialVariableRegistry<TestVariableEnvironment>()
 	.register('host.basename', {
 		label: 'Host basename',
-		resolve: context => context.activeFileBasename,
+		resolve: environment => environment.activeFileBasename,
 	})
 	.register('test.value', {
 		label: 'Test value',
-		resolve: context => context.activeFileContent ?? null,
+		resolve: environment => environment.activeFileContent ?? null,
 	});
 const TEMPLATE_PARSER = new TemplateParser(SPECIAL_VARIABLES);
 const PROGRAM_PARSER = new TemplateProgramParser();
 const FRONTMATTER = new FrontmatterService();
+
+class MockOutputFolderProvider implements OutputFolderProvider {
+	constructor(
+		private readonly defaultFolder: string,
+		private readonly activeFileFolder: string | null,
+	) {}
+
+	getDefaultFolder(): string {
+		return this.defaultFolder;
+	}
+
+	getActiveFileFolder(): string | null {
+		return this.activeFileFolder;
+	}
+
+	getExplicitFolder(path: string): string {
+		return path;
+	}
+}
 
 class MockExpressionEvaluator extends ExpressionEvaluator {
 	readonly calls: { expression: string; values: ResolvedVariables; sourcePath?: string }[] = [];
@@ -78,7 +105,7 @@ class MockExpressionEvaluator extends ExpressionEvaluator {
 
 const EXPRESSIONS = new MockExpressionEvaluator();
 const TEMPLATE_RENDERER = new TemplateRenderer(EXPRESSIONS, PROGRAM_PARSER);
-const PATHS = new OutputPathResolver();
+const VAULT_PATHS = new VaultPathService();
 
 async function rejected(promise: Promise<unknown>): Promise<Error> {
 	try {
@@ -93,17 +120,23 @@ function parseTemplate(sourcePath: string, content: string) {
 	return TEMPLATE_PARSER.parse(sourcePath, content);
 }
 
-function resolveVariables(definitions: Record<string, VariableDefinition>, context: ExecutionContext, userValues: ResolvedVariables) {
-	return new VariableResolver(SPECIAL_VARIABLES, EXPRESSIONS).resolve(definitions, context, userValues);
+function resolveVariables(
+	definitions: Record<string, VariableDefinition>,
+	environment: TestVariableEnvironment,
+	userValues: ResolvedVariables,
+) {
+	return new VariableResolver(SPECIAL_VARIABLES, EXPRESSIONS).resolve(definitions, environment, userValues);
 }
 
 function renderNote(
 	template: TemplateDefinition,
-	context: ExecutionContext,
+	environment: TestVariableEnvironment,
 	userValues: ResolvedVariables,
 	defaultOutputFolderPath: string,
 ) {
-	return new TemplateEngine(SPECIAL_VARIABLES, EXPRESSIONS).render(template, context, userValues, defaultOutputFolderPath);
+	let activeFileFolder = typeof environment.activeFileFolder === 'string' ? environment.activeFileFolder : null;
+	let outputFolders = new MockOutputFolderProvider(defaultOutputFolderPath, activeFileFolder);
+	return new TemplateEngine(SPECIAL_VARIABLES, EXPRESSIONS, outputFolders).render(template, environment, userValues);
 }
 
 describe('template parser', () => {
@@ -326,7 +359,7 @@ describe('renderer and expressions', () => {
 				title: { type: 'input', inputType: 'text' },
 				slug: { type: 'formula', formula: 'title.toLowerCase().replaceAll(" ", "-")' },
 			},
-			CONTEXT,
+			ENVIRONMENT,
 			{ title: 'My Note' },
 			'x.md',
 		);
@@ -344,16 +377,16 @@ describe('variable resolution', () => {
 	test('resolves host-registered special variables', async () => {
 		let values = await resolveVariables(
 			{ value: { type: 'special', source: 'test.value' } },
-			{ ...CONTEXT, activeFileContent: 'content' },
+			{ ...ENVIRONMENT, activeFileContent: 'content' },
 			{},
 		);
 		expect(values.value).toBe('content');
 		expect(SPECIAL_VARIABLES.get('test.value')?.label).toBe('Test value');
-		expect(() => SPECIAL_VARIABLES.resolve('missing', CONTEXT)).toThrow('is not registered');
+		expect(() => SPECIAL_VARIABLES.resolve('missing', ENVIRONMENT)).toThrow('is not registered');
 		expect(() => SPECIAL_VARIABLES.register('test.value', { label: 'Duplicate', resolve: () => null })).toThrow('already registered');
 	});
 
-	test('resolves context, user input, ordered expressions, defaults, and types', async () => {
+	test('resolves environment values, user input, ordered expressions, defaults, and types', async () => {
 		let definitions = {
 			file: { type: 'special' as const, source: 'host.basename' as const },
 			title: { type: 'input' as const, inputType: 'text' as const, required: true },
@@ -363,7 +396,7 @@ describe('variable resolution', () => {
 			copiedCount: { type: 'formula' as const, formula: 'count' },
 		};
 		expect(VariableResolver.needingInput(definitions)).toEqual(['title', 'count']);
-		expect(await resolveVariables(definitions, CONTEXT, { title: 'My Note' })).toEqual({
+		expect(await resolveVariables(definitions, ENVIRONMENT, { title: 'My Note' })).toEqual({
 			file: 'Source',
 			title: 'My Note',
 			slug: 'my-note',
@@ -381,7 +414,7 @@ describe('variable resolution', () => {
 						base: { type: 'input', inputType: 'text' },
 						derived: { type: 'formula', formula: 'base?.toUpperCase() ?? ""' },
 					},
-					CONTEXT,
+					ENVIRONMENT,
 					{},
 				)
 			).derived,
@@ -390,9 +423,9 @@ describe('variable resolution', () => {
 
 	test('detects missing required values and expression failures', async () => {
 		expect(
-			await rejected(resolveVariables({ title: { type: 'input', inputType: 'text', required: true } }, CONTEXT, {})),
+			await rejected(resolveVariables({ title: { type: 'input', inputType: 'text', required: true } }, ENVIRONMENT, {})),
 		).toBeInstanceOf(MissingRequiredVariableError);
-		let formulaError = await rejected(resolveVariables({ a: { type: 'formula', formula: 'unknown()' } }, CONTEXT, {}));
+		let formulaError = await rejected(resolveVariables({ a: { type: 'formula', formula: 'unknown()' } }, ENVIRONMENT, {}));
 		expect(formulaError).toBeInstanceOf(FormulaError);
 		expect(formulaError.message).toContain('declared above');
 	});
@@ -404,7 +437,7 @@ describe('variable resolution', () => {
 					first: { type: 'formula', formula: 'second' },
 					second: { type: 'formula', formula: '"value"' },
 				},
-				CONTEXT,
+				ENVIRONMENT,
 				{},
 			),
 		);
@@ -413,7 +446,9 @@ describe('variable resolution', () => {
 	});
 
 	test('rejects user values for computed variables', async () => {
-		let error = await rejected(resolveVariables({ slug: { type: 'formula', formula: '"generated"' } }, CONTEXT, { slug: 'override' }));
+		let error = await rejected(
+			resolveVariables({ slug: { type: 'formula', formula: '"generated"' } }, ENVIRONMENT, { slug: 'override' }),
+		);
 		expect(error).toBeInstanceOf(VariableResolutionError);
 		expect(error.message).toContain('does not accept user input');
 	});
@@ -422,7 +457,7 @@ describe('variable resolution', () => {
 		expect(
 			(
 				await rejected(
-					resolveVariables({ tags: { type: 'input', inputType: 'multiselect', options: ['one', 'two'] } }, CONTEXT, {
+					resolveVariables({ tags: { type: 'input', inputType: 'multiselect', options: ['one', 'two'] } }, ENVIRONMENT, {
 						tags: 'one\nthree',
 					}),
 				)
@@ -436,7 +471,7 @@ describe('variable resolution', () => {
 			['list', []],
 		] as const) {
 			expect(
-				await rejected(resolveVariables({ value: { type: 'input', inputType, required: true } }, CONTEXT, { value })),
+				await rejected(resolveVariables({ value: { type: 'input', inputType, required: true } }, ENVIRONMENT, { value })),
 			).toBeInstanceOf(MissingRequiredVariableError);
 		}
 	});
@@ -450,18 +485,13 @@ describe('variable resolution', () => {
 	});
 });
 
-describe('paths and conflicts', () => {
+describe('output paths', () => {
 	test('normalizes safe vault paths and rejects escape paths', () => {
-		expect(PATHS.normalizeFolder('./Projects//./Work/')).toBe('Projects/Work');
-		expect(() => PATHS.normalizeFolder('/tmp')).toThrow(TemplateValidationError);
-		expect(() => PATHS.normalizeFolder('Projects/../Secrets')).toThrow(TemplateValidationError);
-		expect(() => PATHS.normalizeFolder('C:\\tmp')).toThrow(TemplateValidationError);
-	});
-
-	test('appends numbers without overwriting', () => {
-		let existing = new Set(['Notes/Name.md', 'Notes/Name 1.md']);
-		expect(PATHS.findAvailable('Notes/Name.md', 'append-number', path => existing.has(path))).toBe('Notes/Name 2.md');
-		expect(() => PATHS.findAvailable('Notes/Name.md', 'cancel', path => existing.has(path))).toThrow(FileConflictError);
+		expect(VAULT_PATHS.normalizeFolder('./Projects//./Work/')).toBe('Projects/Work');
+		expect(() => VAULT_PATHS.normalizeFolder('/tmp')).toThrow(TemplateValidationError);
+		expect(() => VAULT_PATHS.normalizeFolder('Projects/../Secrets')).toThrow(TemplateValidationError);
+		expect(() => VAULT_PATHS.normalizeFolder('C:\\tmp')).toThrow(TemplateValidationError);
+		expect(VAULT_PATHS.join('Projects/Work', 'Note.md')).toBe('Projects/Work/Note.md');
 	});
 
 	test('renders explicit and fallback folder modes and sanitizes filenames', async () => {
@@ -475,10 +505,10 @@ describe('paths and conflicts', () => {
 			parsedFrontmatter: {},
 			output: { folder: { mode: 'path', path: 'Projects/{{ slug }}' }, filename: ' Bad: {{ slug }} ' },
 		};
-		expect((await renderNote(base, CONTEXT, { slug: 'One' }, 'Default')).folder).toBe('Projects/One');
-		expect((await renderNote(base, CONTEXT, { slug: 'One' }, 'Default')).filename).toBe('Bad- One.md');
+		expect((await renderNote(base, ENVIRONMENT, { slug: 'One' }, 'Default')).folder).toBe('Projects/One');
+		expect((await renderNote(base, ENVIRONMENT, { slug: 'One' }, 'Default')).filename).toBe('Bad- One.md');
 		base.output = { folder: { mode: 'same-as-active-file' } };
-		expect((await renderNote(base, { ...CONTEXT, activeFileFolder: null }, {}, 'Fallback')).usedFolderFallback).toBeTrue();
+		expect((await renderNote(base, { ...ENVIRONMENT, activeFileFolder: null }, {}, 'Fallback')).usedFolderFallback).toBeTrue();
 	});
 
 	test('rejects invalid rendered output YAML', async () => {
@@ -492,7 +522,9 @@ describe('paths and conflicts', () => {
 			rawFrontmatter: '',
 			parsedFrontmatter: {},
 		};
-		expect((await rejected(renderNote(template, CONTEXT, { value: 'x' }, ''))).message).toContain('Invalid rendered note frontmatter');
+		expect((await rejected(renderNote(template, ENVIRONMENT, { value: 'x' }, ''))).message).toContain(
+			'Invalid rendered note frontmatter',
+		);
 	});
 });
 
@@ -538,7 +570,7 @@ title: "{{ title }}"
 # {{ title }}
 `,
 		).template!;
-		let rendered = await renderNote(template, CONTEXT, { title: 'Example Project' }, 'Default');
+		let rendered = await renderNote(template, ENVIRONMENT, { title: 'Example Project' }, 'Default');
 		expect(rendered.folder).toBe('Projects');
 		expect(rendered.filename).toBe('example-project.md');
 		expect(rendered.content).toBe('---\ntitle: "Example Project"\n---\n\n# Example Project\n');

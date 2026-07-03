@@ -37,7 +37,7 @@ export class FilePickerModal extends FuzzySuggestModal<TFile> {
 	}
 
 	getItemText(file: TFile): string {
-		return `${this.validPaths.has(file.path) ? 'Template' : 'Markdown'} — ${file.path}`;
+		return `${this.validPaths.has(file.path) ? 'Template' : 'Markdown'}: ${file.path}`;
 	}
 
 	onChooseItem(item: TFile, _evt: MouseEvent | KeyboardEvent): void {

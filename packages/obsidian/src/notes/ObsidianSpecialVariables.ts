@@ -1,94 +1,84 @@
 import { SpecialVariableRegistry } from 'packages/core/src/index';
-import type { ExecutionContext } from 'packages/core/src/index';
+import type { App, TFile } from 'obsidian';
 
-export type ObsidianContextRequirement = 'activeFileContent' | 'editorSelection' | 'clipboard';
-export type ObsidianSpecialVariableRegistry = SpecialVariableRegistry<{ requiredContext?: ObsidianContextRequirement }>;
+/** Execution-scoped, lazily loaded values available to Obsidian special variables. */
+export class ObsidianVariableEnvironment {
+	private readonly activeFile: TFile | null;
+	private readonly activeFileFrontmatter: Record<string, unknown> | null;
+	private activeFileContent?: Promise<string | null>;
+	private clipboard?: Promise<string | null>;
 
-export interface ObsidianExecutionContext extends ExecutionContext {
-	activeFilePath: string | null;
-	activeFileBasename: string | null;
-	activeFileFrontmatter: Record<string, unknown> | null;
-	activeFileContent?: string;
-	cursor?: { line: number; ch: number } | null;
-	editorSelection?: string;
-	clipboard?: string;
+	constructor(private readonly app: App) {
+		this.activeFile = app.workspace.getActiveFile();
+		this.activeFileFrontmatter = this.activeFile ? (app.metadataCache.getFileCache(this.activeFile)?.frontmatter ?? null) : null;
+	}
+
+	getActiveFilePath(): string | null {
+		return this.activeFile?.path ?? null;
+	}
+
+	getActiveFileBasename(): string | null {
+		return this.activeFile?.basename ?? null;
+	}
+
+	getActiveFileFolder(): string | null {
+		return this.activeFile?.parent?.path ?? null;
+	}
+
+	getActiveFileFrontmatter(): Record<string, unknown> | null {
+		return this.activeFileFrontmatter;
+	}
+
+	getActiveFileContent(): Promise<string | null> {
+		this.activeFileContent ??= this.activeFile ? this.app.vault.cachedRead(this.activeFile) : Promise.resolve(null);
+		return this.activeFileContent;
+	}
+
+	getClipboard(): Promise<string | null> {
+		this.clipboard ??= this.readClipboard();
+		return this.clipboard;
+	}
+
+	private async readClipboard(): Promise<string | null> {
+		try {
+			return await navigator.clipboard.readText();
+		} catch {
+			return null;
+		}
+	}
 }
 
-function obsidianContext(context: ExecutionContext): ObsidianExecutionContext {
-	return context as ObsidianExecutionContext;
-}
-
-function formatLocalDate(date: Date): string {
-	let year = date.getFullYear().toString().padStart(4, '0');
-	let month = (date.getMonth() + 1).toString().padStart(2, '0');
-	let day = date.getDate().toString().padStart(2, '0');
-	return `${year}-${month}-${day}`;
-}
+export type ObsidianSpecialVariableRegistry = SpecialVariableRegistry<ObsidianVariableEnvironment>;
 
 /** Creates the core registry and installs every source provided by Obsidian. */
 export function createObsidianSpecialVariableRegistry(): ObsidianSpecialVariableRegistry {
-	let registry = new SpecialVariableRegistry<{ requiredContext?: ObsidianContextRequirement }>();
+	let registry = new SpecialVariableRegistry<ObsidianVariableEnvironment>();
 
 	registry
 		.register('activeFile.path', {
 			label: 'Active file path',
-			resolve: context => obsidianContext(context).activeFilePath,
+			resolve: environment => environment.getActiveFilePath(),
 		})
 		.register('activeFile.basename', {
 			label: 'Active file basename',
-			resolve: context => obsidianContext(context).activeFileBasename,
+			resolve: environment => environment.getActiveFileBasename(),
 		})
 		.register('activeFile.folder', {
 			label: 'Active file folder',
-			resolve: context => obsidianContext(context).activeFileFolder,
+			resolve: environment => environment.getActiveFileFolder(),
 		})
 		.register('activeFile.frontmatter', {
 			label: 'Active file frontmatter',
-			resolve: context => obsidianContext(context).activeFileFrontmatter,
+			resolve: environment => environment.getActiveFileFrontmatter(),
 		})
 		.register('activeFile.content', {
 			label: 'Active file content',
-			metadata: { requiredContext: 'activeFileContent' },
-			resolve: context => obsidianContext(context).activeFileContent ?? null,
-		})
-		.register('cursor.line', {
-			label: 'Cursor line',
-			resolve: context => obsidianContext(context).cursor?.line ?? null,
-		})
-		.register('cursor.ch', {
-			label: 'Cursor column',
-			resolve: context => obsidianContext(context).cursor?.ch ?? null,
-		})
-		.register('editor.selection', {
-			label: 'Editor selection',
-			metadata: { requiredContext: 'editorSelection' },
-			resolve: context => obsidianContext(context).editorSelection ?? null,
-		})
-		.register('date.today', {
-			label: 'Today',
-			resolve: () => formatLocalDate(new Date()),
-		})
-		.register('date.now', {
-			label: 'Current date and time',
-			resolve: () => new Date().toISOString(),
+			resolve: environment => environment.getActiveFileContent(),
 		})
 		.register('clipboard', {
 			label: 'Clipboard',
-			metadata: { requiredContext: 'clipboard' },
-			resolve: context => obsidianContext(context).clipboard ?? null,
+			resolve: environment => environment.getClipboard(),
 		});
 
 	return registry;
-}
-
-export function getRequiredObsidianContext(
-	registry: ObsidianSpecialVariableRegistry,
-	sources: Iterable<string>,
-): Set<ObsidianContextRequirement> {
-	let required = new Set<ObsidianContextRequirement>();
-	for (let source of sources) {
-		let requirement = registry.get(source)?.metadata?.requiredContext;
-		if (requirement) required.add(requirement);
-	}
-	return required;
 }

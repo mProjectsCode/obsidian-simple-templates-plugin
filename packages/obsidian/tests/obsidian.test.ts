@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { MockTFile } from 'packages/obsidian/tests/ObsidianMock';
-import { FormulaError } from 'packages/core/src/index';
+import { FileConflictError, FormulaError } from 'packages/core/src/index';
 import { SafeJsExpressionEvaluator } from 'packages/obsidian/src/expressions/SafeJsExpressionEvaluator';
 import {
 	createEditableTemplateMetadata,
@@ -10,9 +10,11 @@ import {
 import { FilePickerModal } from 'packages/obsidian/src/modals/FilePickerModal';
 import { TemplatePickerModal } from 'packages/obsidian/src/modals/TemplatePickerModal';
 import { VariableInputModal } from 'packages/obsidian/src/modals/VariableInputModal';
+import { NoteDestinationResolver } from 'packages/obsidian/src/notes/NoteDestinationResolver';
+import { ObsidianOutputFolderProvider } from 'packages/obsidian/src/notes/ObsidianOutputFolderProvider';
 import { pathAffectsTemplateRegistry } from 'packages/obsidian/src/templates/RegistryPaths';
 import { TemplateRegistry } from 'packages/obsidian/src/templates/TemplateRegistry';
-import { createObsidianSpecialVariableRegistry, getRequiredObsidianContext } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
+import { createObsidianSpecialVariableRegistry, ObsidianVariableEnvironment } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
 import type { SafeJsExecutionResult, SafeJsExpressionOptions } from '@lemons_dev/obsidian-safe-js-api';
 import { DEFAULT_SETTINGS, loadPluginSettings } from 'packages/obsidian/src/settings/PluginSettings';
 
@@ -73,6 +75,45 @@ describe('Safe JS expression adapter', () => {
 		expect(await rejected(evaluator.evaluateTemplateExpression('title.toUpperCase()', { title: 'Local value' }))).toBeInstanceOf(
 			FormulaError,
 		);
+	});
+});
+
+describe('Obsidian output folders', () => {
+	test('supplies every output mode without using the special-variable context', () => {
+		let activeFile: { parent: { path: string } | null } | null = { parent: { path: 'Projects' } };
+		let app = {
+			workspace: {
+				getActiveFile(): typeof activeFile {
+					return activeFile;
+				},
+			},
+		};
+		let provider = new ObsidianOutputFolderProvider(app as never, 'Notes');
+
+		expect(provider.getDefaultFolder()).toBe('Notes');
+		expect(provider.getActiveFileFolder()).toBe('Projects');
+		expect(provider.getExplicitFolder('Archive/2026')).toBe('Archive/2026');
+
+		activeFile = null;
+		expect(provider.getActiveFileFolder()).toBeNull();
+	});
+});
+
+describe('note destinations', () => {
+	test('resolves vault conflicts without passing filesystem callbacks into core', async () => {
+		let existing = new Set(['Notes/Name.md', 'Notes/Name 1.md']);
+		let app = {
+			vault: {
+				getAbstractFileByPath(path: string): object | null {
+					return existing.has(path) ? {} : null;
+				},
+			},
+		};
+		let resolver = new NoteDestinationResolver(app as never);
+
+		expect(await resolver.resolve('Notes', 'Name.md', 'append-number')).toBe('Notes/Name 2.md');
+		await expect(resolver.resolve('Notes', 'Name.md', 'cancel')).rejects.toBeInstanceOf(FileConflictError);
+		expect(await resolver.resolve('', 'New.md', 'cancel')).toBe('New.md');
 	});
 });
 
@@ -195,12 +236,38 @@ describe('plugin settings', () => {
 });
 
 describe('Obsidian special variables', () => {
-	test('registers built-in sources and their context requirements', () => {
+	test('resolves built-in sources through a lazy execution environment', async () => {
+		let reads = 0;
+		let activeFile = { path: 'Projects/Note.md', basename: 'Note', parent: { path: 'Projects' } };
+		let app = {
+			workspace: {
+				getActiveFile(): typeof activeFile {
+					return activeFile;
+				},
+				getActiveViewOfType(): null {
+					return null;
+				},
+			},
+			metadataCache: {
+				getFileCache(): { frontmatter: { status: string } } {
+					return { frontmatter: { status: 'active' } };
+				},
+			},
+			vault: {
+				async cachedRead(): Promise<string> {
+					reads += 1;
+					return 'content';
+				},
+			},
+		};
 		let registry = createObsidianSpecialVariableRegistry();
-		expect(registry.resolve('activeFile.basename', { activeFileFolder: null, activeFileBasename: 'Note' })).toBe('Note');
-		expect(getRequiredObsidianContext(registry, ['activeFile.content', 'date.today', 'clipboard'])).toEqual(
-			new Set(['activeFileContent', 'clipboard']),
-		);
+		let environment = new ObsidianVariableEnvironment(app as never);
+
+		expect(await registry.resolve('activeFile.basename', environment)).toBe('Note');
+		expect(reads).toBe(0);
+		expect(await registry.resolve('activeFile.content', environment)).toBe('content');
+		expect(await registry.resolve('activeFile.content', environment)).toBe('content');
+		expect(reads).toBe(1);
 	});
 });
 

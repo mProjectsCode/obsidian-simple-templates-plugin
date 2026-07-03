@@ -49,7 +49,7 @@ export class TemplateMetadataEditorModal extends Modal {
 	private render(): void {
 		this.contentEl.empty();
 
-		this.setTitle(`Edit template metadata — ${this.file.basename}`);
+		this.setTitle(`Edit template metadata: ${this.file.basename}`);
 
 		let identityGroup = new SettingGroup(this.contentEl);
 		identityGroup.setHeading('Identity');
@@ -365,7 +365,7 @@ export class TemplateMetadataEditorModal extends Modal {
 		await this.app.vault.modify(this.file, mergedContent);
 		this.originalContent = mergedContent;
 		await this.onSaved();
-		new Notice(`Saved template metadata for “${this.file.basename}”.`);
+		new Notice(`Saved template metadata for "${this.file.basename}".`);
 		this.close();
 	}
 }

@@ -1,4 +1,4 @@
-import { OutputPathResolver } from 'packages/core/src/index';
+import { VaultPathService } from 'packages/core/src/index';
 import { pathAffectsTemplateRegistry } from 'packages/obsidian/src/templates/RegistryPaths';
 import type { TemplateRegistry } from 'packages/obsidian/src/templates/TemplateRegistry';
 import type { Plugin, TAbstractFile } from 'obsidian';
@@ -6,7 +6,7 @@ import { TFile, debounce } from 'obsidian';
 
 /** Registers and filters vault events that can invalidate the template registry. */
 export class TemplateRegistryMonitor {
-	private readonly paths = new OutputPathResolver();
+	private readonly paths = new VaultPathService();
 
 	constructor(
 		private readonly plugin: Plugin,

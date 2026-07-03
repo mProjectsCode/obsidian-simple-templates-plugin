@@ -2,7 +2,7 @@ import type { NoteOutputDefinition, TemplateDefinition, ValidationIssue, Variabl
 import type { TemplateProgram } from 'packages/core/src/domain/TemplateAst';
 import { TemplateProgramParser } from 'packages/core/src/templates/TemplateProgramParser';
 import { TemplateMetadataSchema, VariableDefinitionSchema } from 'packages/core/src/templates/TemplateSchemas';
-import type { SpecialVariableRegistry } from 'packages/core/src/variables/SpecialVariableRegistry';
+import type { SpecialVariableCatalog } from 'packages/core/src/variables/SpecialVariableRegistry';
 import type { z } from 'zod';
 import { InputValueService } from 'packages/core/src/variables/InputValueService';
 
@@ -10,7 +10,7 @@ import { InputValueService } from 'packages/core/src/variables/InputValueService
 export class TemplateValidator {
 	private readonly inputValues = new InputValueService();
 	constructor(
-		private readonly specialVariables: SpecialVariableRegistry<unknown>,
+		private readonly specialVariables: SpecialVariableCatalog,
 		private readonly parser = new TemplateProgramParser(),
 	) {}
 

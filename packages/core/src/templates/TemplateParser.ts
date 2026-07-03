@@ -11,7 +11,7 @@ import type {
 import { FrontmatterService } from 'packages/core/src/frontmatter/FrontmatterService';
 import { TemplateProgramParser } from 'packages/core/src/templates/TemplateProgramParser';
 import { TemplateValidator } from 'packages/core/src/templates/TemplateValidator';
-import type { SpecialVariableRegistry } from 'packages/core/src/variables/SpecialVariableRegistry';
+import type { SpecialVariableCatalog } from 'packages/core/src/variables/SpecialVariableRegistry';
 
 interface SourceLine {
 	start: number;
@@ -31,7 +31,7 @@ export class TemplateParser {
 	private readonly validator: TemplateValidator;
 
 	constructor(
-		specialVariables: SpecialVariableRegistry<unknown>,
+		specialVariables: SpecialVariableCatalog,
 		private readonly frontmatter = new FrontmatterService(),
 		private readonly programParser = new TemplateProgramParser(),
 		validator?: TemplateValidator,

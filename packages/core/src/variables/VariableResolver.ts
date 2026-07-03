@@ -1,5 +1,5 @@
 import { FormulaError, MissingRequiredVariableError, VariableResolutionError } from 'packages/core/src/domain/Errors';
-import type { ExecutionContext, ResolvedVariables, VariableDefinition } from 'packages/core/src/domain/Types';
+import type { ResolvedVariables, VariableDefinition } from 'packages/core/src/domain/Types';
 import type { ExpressionEvaluator } from 'packages/core/src/expressions/ExpressionEvaluator';
 import type { SpecialVariableRegistry } from 'packages/core/src/variables/SpecialVariableRegistry';
 import { InputValueService } from 'packages/core/src/variables/InputValueService';
@@ -8,10 +8,10 @@ import { InputValueService } from 'packages/core/src/variables/InputValueService
  * Resolves template variables through special sources, user input, Safe JS expressions,
  * defaults, type coercion, and required-value checks.
  */
-export class VariableResolver {
+export class VariableResolver<Environment> {
 	private readonly inputValues = new InputValueService();
 	constructor(
-		private readonly specialVariables: SpecialVariableRegistry<unknown>,
+		private readonly specialVariables: SpecialVariableRegistry<Environment>,
 		private readonly expressions: ExpressionEvaluator,
 	) {}
 
@@ -23,7 +23,7 @@ export class VariableResolver {
 
 	async resolve(
 		definitions: Record<string, VariableDefinition>,
-		context: ExecutionContext,
+		environment: Environment,
 		userValues: ResolvedVariables,
 		sourcePath?: string,
 	): Promise<ResolvedVariables> {
@@ -31,7 +31,7 @@ export class VariableResolver {
 
 		// ---- 1. Populate from special sources ----
 		for (let [name, definition] of Object.entries(definitions)) {
-			if (definition.type === 'special') values[name] = this.specialVariables.resolve(definition.source, context);
+			if (definition.type === 'special') values[name] = await this.specialVariables.resolve(definition.source, environment);
 		}
 
 		// ---- 2. Apply user-provided input values ----

@@ -1,5 +1,5 @@
-import { OutputPathResolver, TemplateParser } from 'packages/core/src/index';
-import type { SpecialVariableRegistry, TemplateDefinition, ValidationIssue } from 'packages/core/src/index';
+import { TemplateParser, VaultPathService } from 'packages/core/src/index';
+import type { SpecialVariableCatalog, TemplateDefinition, ValidationIssue } from 'packages/core/src/index';
 import { TFile } from 'obsidian';
 import type { Vault } from 'obsidian';
 
@@ -20,12 +20,12 @@ export class TemplateRegistry {
 	private baseResults = new Map<string, TemplateValidationResult>();
 	private refreshTail: Promise<void> = Promise.resolve();
 	private readonly parser: TemplateParser;
-	private readonly paths = new OutputPathResolver();
+	private readonly paths = new VaultPathService();
 
 	constructor(
 		private readonly vault: Vault,
 		private readonly getFolder: () => string,
-		specialVariables: SpecialVariableRegistry<unknown>,
+		specialVariables: SpecialVariableCatalog,
 	) {
 		this.parser = new TemplateParser(specialVariables);
 	}

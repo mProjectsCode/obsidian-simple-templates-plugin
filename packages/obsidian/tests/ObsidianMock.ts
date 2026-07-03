@@ -27,11 +27,14 @@ class MockModal {
 	onClose(): void {}
 }
 
+class MockMarkdownView {}
+
 class MockSettingGroup {}
 
 void mock.module('obsidian', function createObsidianMock() {
 	return {
 		FuzzySuggestModal: MockFuzzySuggestModal,
+		MarkdownView: MockMarkdownView,
 		Modal: MockModal,
 		SettingGroup: MockSettingGroup,
 		TFile: MockTFile,

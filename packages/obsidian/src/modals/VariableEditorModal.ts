@@ -31,7 +31,7 @@ export class VariableEditorModal extends Modal {
 	}
 
 	override onOpen(): void {
-		this.setTitle(this.originalName === null ? 'Add variable' : `Edit variable — ${this.originalName}`);
+		this.setTitle(this.originalName === null ? 'Add variable' : `Edit variable: ${this.originalName}`);
 		this.renderIdentity();
 		this.detailsEl = this.contentEl.createDiv();
 		this.renderDetails();
@@ -259,7 +259,7 @@ export class VariableEditorModal extends Modal {
 			return;
 		}
 		if (name !== this.originalName && this.existingNames.has(name)) {
-			this.errorEl?.setText(`A variable named “${name}” already exists.`);
+			this.errorEl?.setText(`A variable named "${name}" already exists.`);
 			return;
 		}
 		let issue = new TemplateValidator(this.specialVariables).validateVariables({ [name]: this.definition })[0];

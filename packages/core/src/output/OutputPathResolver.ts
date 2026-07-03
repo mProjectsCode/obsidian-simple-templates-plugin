@@ -1,30 +1,26 @@
-import { FileConflictError, TemplateValidationError } from 'packages/core/src/domain/Errors';
-import type { ExecutionContext, FileConflictStrategy, OutputFolderDefinition } from 'packages/core/src/domain/Types';
+import { TemplateValidationError } from 'packages/core/src/domain/Errors';
+import type { OutputFolderDefinition } from 'packages/core/src/domain/Types';
+import type { OutputFolderProvider, ResolvedOutputFolder } from 'packages/core/src/output/OutputFolderProvider';
+import { VaultPathService } from 'packages/core/src/output/VaultPathService';
 
-/** Centralizes vault-relative output folder, filename, and conflict handling. */
+/** Resolves rendered output configuration into a safe folder and filename. */
 export class OutputPathResolver {
-	normalizeFolder(path: string): string {
-		let normalized = path.replaceAll('\\', '/').trim();
-		if (/^(?:\/|[a-zA-Z]:\/)/.test(normalized)) throw new TemplateValidationError('Output folder must be vault-relative.');
-		let segments = normalized.split('/');
-		if (segments.includes('..')) throw new TemplateValidationError('Output folder cannot contain path traversal segments.');
-		return segments.filter(segment => segment && segment !== '.').join('/');
-	}
+	constructor(private readonly paths = new VaultPathService()) {}
 
 	resolveFolder(
 		definition: OutputFolderDefinition | undefined,
-		context: ExecutionContext,
-		defaultOutputFolderPath: string,
+		provider: OutputFolderProvider,
 		renderedPath?: string,
-	): { folder: string; usedFallback: boolean } {
+	): ResolvedOutputFolder {
 		let selected = definition ?? { mode: 'default' as const };
 		if (selected.mode === 'same-as-active-file') {
-			return context.activeFileFolder === null
-				? { folder: this.normalizeFolder(defaultOutputFolderPath), usedFallback: true }
-				: { folder: this.normalizeFolder(context.activeFileFolder), usedFallback: false };
+			let folder = provider.getActiveFileFolder();
+			return folder === null
+				? { folder: this.paths.normalizeFolder(provider.getDefaultFolder()), usedFolderFallback: true }
+				: { folder: this.paths.normalizeFolder(folder), usedFolderFallback: false };
 		}
-		let path = selected.mode === 'path' ? (renderedPath ?? selected.path) : defaultOutputFolderPath;
-		return { folder: this.normalizeFolder(path), usedFallback: false };
+		let path = selected.mode === 'path' ? provider.getExplicitFolder(renderedPath ?? selected.path) : provider.getDefaultFolder();
+		return { folder: this.paths.normalizeFolder(path), usedFolderFallback: false };
 	}
 
 	resolveFilename(renderedTemplate: string): string {
@@ -38,22 +34,5 @@ export class OutputPathResolver {
 			.trim();
 		if (!cleaned) throw new TemplateValidationError('Output filename is empty.');
 		return /\.md$/i.test(cleaned) ? cleaned : `${cleaned}.md`;
-	}
-
-	findAvailable(desiredPath: string, strategy: Exclude<FileConflictStrategy, 'prompt'>, exists: (path: string) => boolean): string {
-		if (!exists(desiredPath)) return desiredPath;
-		if (strategy === 'cancel') throw new FileConflictError(`A note already exists at "${desiredPath}".`);
-		let extensionIndex = desiredPath.toLowerCase().endsWith('.md') ? desiredPath.length - 3 : desiredPath.length;
-		let stem = desiredPath.slice(0, extensionIndex);
-		let extension = desiredPath.slice(extensionIndex);
-		for (let index = 1; index < Number.MAX_SAFE_INTEGER; index += 1) {
-			let candidate = `${stem} ${index}${extension}`;
-			if (!exists(candidate)) return candidate;
-		}
-		throw new FileConflictError(`Could not find an available filename for "${desiredPath}".`);
-	}
-
-	join(folder: string, filename: string): string {
-		return folder ? `${folder}/${filename}` : filename;
 	}
 }

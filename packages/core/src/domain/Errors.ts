@@ -10,7 +10,5 @@ export class FormulaError extends Error {}
 export class MissingRequiredVariableError extends Error {}
 /** Thrown when the output path already exists and cannot be overwritten. */
 export class FileConflictError extends Error {}
-/** Thrown when the execution context is insufficient. */
-export class ExecutionContextError extends Error {}
 /** Thrown when frontmatter merging or editing fails. */
 export class FrontmatterEditError extends Error {}

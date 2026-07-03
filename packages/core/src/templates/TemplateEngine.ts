@@ -1,6 +1,7 @@
-import type { ExecutionContext, RenderedNote, ResolvedVariables, TemplateDefinition } from 'packages/core/src/domain/Types';
+import type { RenderedNote, ResolvedVariables, TemplateDefinition } from 'packages/core/src/domain/Types';
 import type { ExpressionEvaluator } from 'packages/core/src/expressions/ExpressionEvaluator';
 import { FrontmatterService } from 'packages/core/src/frontmatter/FrontmatterService';
+import type { OutputFolderProvider } from 'packages/core/src/output/OutputFolderProvider';
 import { OutputPathResolver } from 'packages/core/src/output/OutputPathResolver';
 import { TemplateProgramParser } from 'packages/core/src/templates/TemplateProgramParser';
 import { TemplateRenderer } from 'packages/core/src/templates/TemplateRenderer';
@@ -10,19 +11,20 @@ import { VariableResolver } from 'packages/core/src/variables/VariableResolver';
 /**
  * The top-level render pipeline for a single template.
  *
- * 1. Resolves all variable values (user-provided, expression-based, context-driven).
+ * 1. Resolves all variable values (user-provided, expression-based, environment-backed).
  * 2. Renders the template body and optional output-frontmatter template.
  * 3. Decides the final output folder and filename.
  *
  * Returns everything needed to write the note to the vault.
  */
-export class TemplateEngine {
-	private readonly variables: VariableResolver;
+export class TemplateEngine<Environment> {
+	private readonly variables: VariableResolver<Environment>;
 	private readonly renderer: TemplateRenderer;
 
 	constructor(
-		specialVariables: SpecialVariableRegistry<unknown>,
+		specialVariables: SpecialVariableRegistry<Environment>,
 		expressions: ExpressionEvaluator,
+		private readonly outputFolders: OutputFolderProvider,
 		private readonly frontmatter = new FrontmatterService(),
 		private readonly paths = new OutputPathResolver(),
 		private readonly programParser = new TemplateProgramParser(),
@@ -31,13 +33,8 @@ export class TemplateEngine {
 		this.renderer = new TemplateRenderer(expressions, programParser);
 	}
 
-	async render(
-		template: TemplateDefinition,
-		context: ExecutionContext,
-		userValues: ResolvedVariables,
-		defaultOutputFolderPath: string,
-	): Promise<RenderedNote & { values: ResolvedVariables; usedFolderFallback: boolean }> {
-		let values = await this.variables.resolve(template.variables, context, userValues, template.sourcePath);
+	async render(template: TemplateDefinition, environment: Environment, userValues: ResolvedVariables): Promise<RenderedNote> {
+		let values = await this.variables.resolve(template.variables, environment, userValues, template.sourcePath);
 		let ast =
 			template.ast ??
 			({
@@ -60,7 +57,7 @@ export class TemplateEngine {
 		// Prepend frontmatter delimiters if an output frontmatter was produced
 		let content = outputFrontmatter ? `---\n${outputFrontmatter}\n---\n${rendered.body}` : rendered.body;
 
-		let { folder, usedFallback } = this.paths.resolveFolder(template.output?.folder, context, defaultOutputFolderPath, rendered.folder);
+		let { folder, usedFolderFallback } = this.paths.resolveFolder(template.output?.folder, this.outputFolders, rendered.folder);
 
 		return {
 			content,
@@ -69,7 +66,7 @@ export class TemplateEngine {
 			conflict: template.output?.conflict ?? 'prompt',
 			openAfterCreate: template.output?.openAfterCreate ?? true,
 			values,
-			usedFolderFallback: usedFallback,
+			usedFolderFallback,
 		};
 	}
 }

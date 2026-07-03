@@ -1,4 +1,4 @@
-import { FrontmatterService, OutputPathResolver } from 'packages/core/src/index';
+import { FrontmatterService, VaultPathService } from 'packages/core/src/index';
 import type SimpleTemplatesPlugin from 'packages/obsidian/src/main';
 import { ConfirmModal } from 'packages/obsidian/src/modals/ConfirmModal';
 import { FilePickerModal } from 'packages/obsidian/src/modals/FilePickerModal';
@@ -9,7 +9,7 @@ import { Notice } from 'obsidian';
 /** Coordinates template metadata selection, validation, and editing. */
 export class TemplateMetadataManager {
 	private readonly frontmatter = new FrontmatterService();
-	private readonly paths = new OutputPathResolver();
+	private readonly paths = new VaultPathService();
 
 	constructor(private readonly plugin: SimpleTemplatesPlugin) {}
 

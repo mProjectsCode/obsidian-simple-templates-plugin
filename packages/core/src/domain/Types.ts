@@ -93,16 +93,6 @@ export interface TemplateDefinition extends TemplateIdentity {
 	ast?: TemplateAst;
 }
 
-/**
- * Snapshot of the editor / vault state at the moment a template is about to be
- * rendered.  Populated by the Obsidian host layer and consumed by the core
- * variable-resolution logic.
- */
-export interface ExecutionContext {
-	activeFileFolder: string | null;
-	[key: string]: unknown;
-}
-
 /** A single problem found during parsing or validation. */
 export interface ValidationIssue {
 	severity: 'error' | 'warning';
@@ -119,11 +109,13 @@ export interface ParseResult {
 /** Map of variable names to their resolved (and coerced) values. */
 export type ResolvedVariables = Record<string, unknown>;
 
-/** Final output of the render pipeline – a ready-to-write note. */
+/** Final output of the render pipeline, a ready-to-write note. */
 export interface RenderedNote {
 	content: string;
 	folder: string;
 	filename: string;
 	conflict: FileConflictStrategy;
 	openAfterCreate: boolean;
+	values: ResolvedVariables;
+	usedFolderFallback: boolean;
 }

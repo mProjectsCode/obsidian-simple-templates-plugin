@@ -1,7 +1,7 @@
 import { FrontmatterService, TemplateParser, VARIABLE_INPUT_TYPES, VARIABLE_TYPES } from 'packages/core/src/index';
 import type {
 	NoteOutputDefinition,
-	SpecialVariableRegistry,
+	SpecialVariableCatalog,
 	ValidationIssue,
 	VariableDefinition,
 	VariableInputType,
@@ -77,7 +77,7 @@ export function validateEditableTemplateMetadata(
 	content: string,
 	state: EditableTemplateMetadata,
 	otherIds: ReadonlyMap<string, string>,
-	specialVariables: SpecialVariableRegistry<unknown>,
+	specialVariables: SpecialVariableCatalog,
 ): ValidationIssue[] {
 	let merged = mergeEditableTemplateMetadata(content, state);
 

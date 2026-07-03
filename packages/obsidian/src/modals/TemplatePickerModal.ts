@@ -34,7 +34,7 @@ export class TemplatePickerModal extends FuzzySuggestModal<TemplateDefinition> {
 	}
 
 	getItemText(template: TemplateDefinition): string {
-		return template.description ? `${template.name} — ${template.description}` : template.name;
+		return template.description ? `${template.name}: ${template.description}` : template.name;
 	}
 
 	onChooseItem(item: TemplateDefinition, _evt: MouseEvent | KeyboardEvent): void {
