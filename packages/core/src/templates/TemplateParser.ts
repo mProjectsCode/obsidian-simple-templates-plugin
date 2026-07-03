@@ -105,13 +105,11 @@ export class TemplateParser {
 			}
 			index = closingIndex;
 		}
-		let firstBlock = removals[0];
-		if (!firstBlock) return { body: source, blocks };
-		let bodyStart = firstBlock.end;
-		let body = source.slice(bodyStart);
-		for (let index = removals.length - 1; index >= 1; index -= 1) {
+		if (removals.length === 0) return { body: source, blocks };
+		let body = source;
+		for (let index = removals.length - 1; index >= 0; index -= 1) {
 			let removal = removals[index];
-			if (removal) body = body.slice(0, removal.start - bodyStart) + body.slice(removal.end - bodyStart);
+			if (removal) body = body.slice(0, removal.start) + body.slice(removal.end);
 		}
 		return { body, blocks };
 	}

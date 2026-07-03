@@ -17,6 +17,7 @@ export interface TemplateValidationResult {
  */
 export class TemplateRegistry {
 	private results: TemplateValidationResult[] = [];
+	private baseResults = new Map<string, TemplateValidationResult>();
 	private refreshTail: Promise<void> = Promise.resolve();
 	private readonly parser: TemplateParser;
 	private readonly paths = new OutputPathResolver();
@@ -34,18 +35,47 @@ export class TemplateRegistry {
 	 * serially.
 	 */
 	refresh(): Promise<void> {
-		let queuedRefresh = this.refreshTail.catch(() => undefined).then(() => this.refreshNow());
+		let queuedRefresh = this.enqueue(() => this.refreshNow());
+		return queuedRefresh;
+	}
+
+	/** Re-parses one changed Markdown file without rescanning the folder. */
+	refreshFile(file: TFile): Promise<void> {
+		return this.enqueue(async () => {
+			let folder = this.normalizedFolder();
+			if (folder === null) return;
+			let prefix = folder ? `${folder}/` : '';
+			if (!file.path.startsWith(prefix)) this.baseResults.delete(file.path);
+			else this.baseResults.set(file.path, await this.parseFile(file));
+			this.publishResults();
+		});
+	}
+
+	private enqueue(operation: () => Promise<void>): Promise<void> {
+		let queuedRefresh = this.refreshTail.catch(() => undefined).then(operation);
 		this.refreshTail = queuedRefresh;
 		return queuedRefresh;
 	}
 
 	/** Parses every Markdown file in the template folder and runs validation. */
 	private async refreshNow(): Promise<void> {
+		let folder = this.normalizedFolder();
+		if (folder === null) return;
+
+		let prefix = folder ? `${folder}/` : '';
+		let files = this.vault.getMarkdownFiles().filter(file => file.path.startsWith(prefix));
+
+		let parsed = await Promise.all(files.map(file => this.parseFile(file)));
+		this.baseResults = new Map(parsed.map(result => [result.path, result]));
+		this.publishResults();
+	}
+
+	private normalizedFolder(): string | null {
 		let configuredFolder = this.getFolder();
-		let folder: string;
 		try {
-			folder = this.paths.normalizeFolder(configuredFolder);
+			return this.paths.normalizeFolder(configuredFolder);
 		} catch (error) {
+			this.baseResults.clear();
 			this.results = [
 				{
 					path: configuredFolder,
@@ -53,13 +83,12 @@ export class TemplateRegistry {
 					issues: [{ severity: 'error', message: error instanceof Error ? error.message : String(error) }],
 				},
 			];
-			return;
+			return null;
 		}
+	}
 
-		let prefix = folder ? `${folder}/` : '';
-		let files = this.vault.getMarkdownFiles().filter(file => file.path.startsWith(prefix));
-
-		this.results = await Promise.all(files.map(file => this.parseFile(file)));
+	private publishResults(): void {
+		this.results = [...this.baseResults.values()].map(result => ({ ...result, issues: [...result.issues] }));
 		this.addDuplicateIdIssues();
 	}
 

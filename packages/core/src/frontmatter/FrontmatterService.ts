@@ -1,4 +1,4 @@
-import { parse, stringify } from 'yaml';
+import { parse, parseDocument, stringify } from 'yaml';
 import { FrontmatterEditError, TemplateParseError } from 'packages/core/src/domain/Errors';
 
 export interface FrontmatterDocument {
@@ -52,15 +52,20 @@ export class FrontmatterService {
 
 	mergeTemplate(content: string, known: { template?: unknown; variables?: unknown; output?: unknown }): string {
 		let document = this.parse(content);
-		let merged = structuredClone(document.data);
-		for (let key of ['template', 'variables', 'output'] as const) {
-			if (known[key] === undefined) delete merged[key];
-			else merged[key] = structuredClone(known[key]);
-		}
-		let yaml = this.serialize(merged);
+		let yaml = document.hasFrontmatter && document.raw !== null ? this.mergeYamlDocument(document.raw, known) : this.serialize(known);
 		if (document.hasFrontmatter) return `---\n${yaml}\n---\n${document.body}`;
 		if (!yaml) throw new FrontmatterEditError('Cannot insert empty frontmatter.');
 		return `---\n${yaml}\n---\n${content}`;
+	}
+
+	private mergeYamlDocument(raw: string, known: { template?: unknown; variables?: unknown; output?: unknown }): string {
+		let document = parseDocument(raw);
+		if (document.errors.length > 0) throw new FrontmatterEditError(`Cannot edit YAML frontmatter: ${document.errors[0]?.message}`);
+		for (let key of ['template', 'variables', 'output'] as const) {
+			if (known[key] === undefined) document.delete(key);
+			else document.set(key, structuredClone(known[key]));
+		}
+		return document.toString({ lineWidth: 0 }).trimEnd();
 	}
 
 	parseYamlObject(yaml: string): Record<string, unknown> {

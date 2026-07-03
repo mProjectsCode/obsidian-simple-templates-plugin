@@ -2,12 +2,14 @@ import { FormulaError, MissingRequiredVariableError, VariableResolutionError } f
 import type { ExecutionContext, ResolvedVariables, VariableDefinition } from 'packages/core/src/domain/Types';
 import type { ExpressionEvaluator } from 'packages/core/src/expressions/ExpressionEvaluator';
 import type { SpecialVariableRegistry } from 'packages/core/src/variables/SpecialVariableRegistry';
+import { InputValueService } from 'packages/core/src/variables/InputValueService';
 
 /**
  * Resolves template variables through special sources, user input, Safe JS expressions,
  * defaults, type coercion, and required-value checks.
  */
 export class VariableResolver {
+	private readonly inputValues = new InputValueService();
 	constructor(
 		private readonly specialVariables: SpecialVariableRegistry<unknown>,
 		private readonly expressions: ExpressionEvaluator,
@@ -50,99 +52,38 @@ export class VariableResolver {
 			if (definition.type === 'input' && values[name] === undefined && definition.default !== undefined)
 				values[name] = structuredClone(definition.default);
 
-		// ---- 5. Resolve Safe JS expressions in declaration order ----
-		await this.resolveFormulas(definitions, userValues, values, sourcePath);
-
-		// ---- 6. Coerce and check required ----
+		// ---- 5. Coerce and check inputs before expressions consume them ----
 		for (let [name, definition] of Object.entries(definitions)) {
-			values[name] = this.coerce(name, definition, values[name]);
-			if (
-				definition.type === 'input' &&
-				definition.required &&
-				(values[name] === undefined || values[name] === null || values[name] === '')
-			) {
+			if (definition.type === 'input') values[name] = this.inputValues.coerce(name, definition, values[name]);
+			if (definition.type === 'input' && definition.required && this.inputValues.isEmpty(values[name])) {
 				throw new MissingRequiredVariableError(`Required variable "${name}" has no value.`);
 			}
 		}
+
+		// ---- 6. Resolve Safe JS expressions in declaration order ----
+		await this.resolveFormulas(definitions, values, sourcePath);
 
 		return values;
 	}
 
 	private async resolveFormulas(
 		definitions: Record<string, VariableDefinition>,
-		userValues: ResolvedVariables,
 		values: ResolvedVariables,
 		sourcePath?: string,
 	): Promise<void> {
 		for (let [name, definition] of Object.entries(definitions)) {
 			if (definition.type !== 'formula') continue;
 			try {
-				values[name] = await this.expressions.evaluate(definition.formula, values, sourcePath);
+				let directDependency = definitions[definition.formula];
+				if (directDependency?.type === 'formula' && !Object.hasOwn(values, definition.formula))
+					throw new Error(`Formula "${definition.formula}" has not been evaluated yet.`);
+				values[name] = await this.expressions.evaluateTemplateExpression(definition.formula, values, sourcePath);
 			} catch (error) {
-				throw new FormulaError(`Expression for "${name}" failed: ${error instanceof Error ? error.message : String(error)}`);
+				throw new FormulaError(
+					`Expression for "${name}" failed: ${error instanceof Error ? error.message : String(error)} ` +
+						'Formula variables can only use variables declared above them.',
+				);
 			}
 		}
-	}
-
-	private coerce(name: string, definition: VariableDefinition, value: unknown): unknown {
-		if (value === undefined || value === null || value === '') return value;
-		if (definition.type !== 'input') return value;
-		switch (definition.inputType) {
-			case 'number': {
-				let number = typeof value === 'number' ? value : Number(value);
-				if (!Number.isFinite(number)) throw new VariableResolutionError(`Variable "${name}" must be a number.`);
-				return number;
-			}
-			case 'boolean':
-				if (typeof value === 'boolean') return value;
-				if (value === 'true') return true;
-				if (value === 'false') return false;
-				throw new VariableResolutionError(`Variable "${name}" must be true or false.`);
-			case 'multiselect':
-			case 'list':
-				return this.coerceList(name, definition, value);
-			case 'select': {
-				let selected = this.scalar(value, name);
-				if (!definition.options?.includes(selected))
-					throw new VariableResolutionError(`Variable "${name}" must be one of its configured options.`);
-				return selected;
-			}
-			case 'date': {
-				let date = this.scalar(value, name);
-				if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
-					throw new VariableResolutionError(`Variable "${name}" must be a date in YYYY-MM-DD format.`);
-				return date;
-			}
-			case 'datetime': {
-				let datetime = this.scalar(value, name);
-				if (Number.isNaN(Date.parse(datetime)))
-					throw new VariableResolutionError(`Variable "${name}" must be a valid date and time.`);
-				return datetime;
-			}
-			default:
-				return value;
-		}
-	}
-
-	private coerceList(name: string, definition: VariableDefinition, value: unknown): unknown[] {
-		let items = Array.isArray(value)
-			? value
-			: this.scalar(value, name)
-					.split(/\r?\n|,/)
-					.map(item => item.trim())
-					.filter(Boolean);
-		if (
-			definition.type === 'input' &&
-			definition.inputType === 'multiselect' &&
-			items.some(item => !definition.options?.includes(this.scalar(item, name)))
-		)
-			throw new VariableResolutionError(`Variable "${name}" contains a value outside its configured options.`);
-		return items;
-	}
-
-	private scalar(value: unknown, name: string): string {
-		if (typeof value === 'string') return value;
-		if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') return value.toString();
-		throw new VariableResolutionError(`Variable "${name}" must be a scalar value.`);
 	}
 }

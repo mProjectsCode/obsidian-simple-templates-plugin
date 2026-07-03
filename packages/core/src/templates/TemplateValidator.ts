@@ -4,9 +4,11 @@ import { TemplateProgramParser } from 'packages/core/src/templates/TemplateProgr
 import { TemplateMetadataSchema, VariableDefinitionSchema } from 'packages/core/src/templates/TemplateSchemas';
 import type { SpecialVariableRegistry } from 'packages/core/src/variables/SpecialVariableRegistry';
 import type { z } from 'zod';
+import { InputValueService } from 'packages/core/src/variables/InputValueService';
 
 /** Validates raw metadata and compiled template definitions with shared dependencies. */
 export class TemplateValidator {
+	private readonly inputValues = new InputValueService();
 	constructor(
 		private readonly specialVariables: SpecialVariableRegistry<unknown>,
 		private readonly parser = new TemplateProgramParser(),
@@ -27,6 +29,17 @@ export class TemplateValidator {
 				path: `variables.${name}.source`,
 				message: `Special variable "${name}" requires a valid source.`,
 			});
+		if (result.data.type === 'input' && result.data.default !== undefined) {
+			try {
+				this.inputValues.coerce(name, result.data, result.data.default);
+			} catch (error) {
+				issues.push({
+					severity: 'error',
+					path: `variables.${name}.default`,
+					message: `Default value is invalid: ${error instanceof Error ? error.message : String(error)}`,
+				});
+			}
+		}
 		return issues;
 	}
 

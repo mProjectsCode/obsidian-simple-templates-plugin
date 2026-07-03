@@ -44,7 +44,7 @@ export class TemplateRenderer {
 			if (node.type === 'if') {
 				let matched = false;
 				for (let branch of node.branches) {
-					let value = await this.expressions.evaluate(branch.expression, values, sourcePath);
+					let value = await this.expressions.evaluateTemplateExpression(branch.expression, values, sourcePath);
 					if (!this.isTruthy(value)) continue;
 					await this.renderNodes(branch.children, values, sourcePath, output);
 					matched = true;
@@ -54,7 +54,7 @@ export class TemplateRenderer {
 				continue;
 			}
 
-			let value = await this.expressions.evaluate(node.expression, values, sourcePath);
+			let value = await this.expressions.evaluateTemplateExpression(node.expression, values, sourcePath);
 			if (node.type === 'expression') {
 				output.push(this.renderValue(value));
 			} else {

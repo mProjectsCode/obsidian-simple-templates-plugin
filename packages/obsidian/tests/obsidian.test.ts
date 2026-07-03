@@ -2,7 +2,11 @@ import { describe, expect, test } from 'bun:test';
 import { MockTFile } from 'packages/obsidian/tests/ObsidianMock';
 import { FormulaError } from 'packages/core/src/index';
 import { SafeJsExpressionEvaluator } from 'packages/obsidian/src/expressions/SafeJsExpressionEvaluator';
-import { createEditableTemplateMetadata, mergeEditableTemplateMetadata } from 'packages/obsidian/src/modals/TemplateMetadataState';
+import {
+	createEditableTemplateMetadata,
+	mergeEditableTemplateMetadata,
+	validateEditableTemplateMetadata,
+} from 'packages/obsidian/src/modals/TemplateMetadataState';
 import { FilePickerModal } from 'packages/obsidian/src/modals/FilePickerModal';
 import { TemplatePickerModal } from 'packages/obsidian/src/modals/TemplatePickerModal';
 import { VariableInputModal } from 'packages/obsidian/src/modals/VariableInputModal';
@@ -10,6 +14,7 @@ import { pathAffectsTemplateRegistry } from 'packages/obsidian/src/templates/Reg
 import { TemplateRegistry } from 'packages/obsidian/src/templates/TemplateRegistry';
 import { createObsidianSpecialVariableRegistry, getRequiredObsidianContext } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
 import type { SafeJsExecutionResult, SafeJsExpressionOptions } from '@lemons_dev/obsidian-safe-js-api';
+import { DEFAULT_SETTINGS, loadPluginSettings } from 'packages/obsidian/src/settings/PluginSettings';
 
 class MockSafeJsExpressionApi {
 	readonly calls: { expression: string; options: SafeJsExpressionOptions }[] = [];
@@ -39,7 +44,7 @@ async function rejected(promise: Promise<unknown>): Promise<Error> {
 describe('Safe JS expression adapter', () => {
 	test('maps the core contract to JSON-safe Safe JS expression calls', async () => {
 		let api = new MockSafeJsExpressionApi();
-		let evaluator = new SafeJsExpressionEvaluator(api);
+		let evaluator = new SafeJsExpressionEvaluator(() => api);
 		expect(await evaluator.evaluate('title.toUpperCase()', { title: 'Note', missing: undefined }, 'Templates/note.md')).toBe(
 			'evaluated',
 		);
@@ -60,6 +65,14 @@ describe('Safe JS expression adapter', () => {
 			elapsedMs: 0,
 		};
 		expect(await rejected(evaluator.evaluate('broken()', {}))).toBeInstanceOf(FormulaError);
+	});
+
+	test('does not require Safe JS for a bare identifier', async () => {
+		let evaluator = new SafeJsExpressionEvaluator(() => null);
+		expect(await evaluator.evaluateTemplateExpression('title', { title: 'Local value' })).toBe('Local value');
+		expect(await rejected(evaluator.evaluateTemplateExpression('title.toUpperCase()', { title: 'Local value' }))).toBeInstanceOf(
+			FormulaError,
+		);
 	});
 });
 
@@ -146,6 +159,39 @@ describe('template registry adapters', () => {
 		await registry.refresh();
 		expect(registry.getValidationResults()[0]?.issues[0]?.message).toContain('Could not read template: gone');
 	});
+
+	test('reparses only a modified template file', async () => {
+		let first = new MockTFile('Templates/first.md');
+		let second = new MockTFile('Templates/second.md');
+		let reads: string[] = [];
+		let versions = new Map([
+			[first.path, 1],
+			[second.path, 1],
+		]);
+		let vault = {
+			getMarkdownFiles: () => [first, second],
+			cachedRead: (file: MockTFile) => {
+				reads.push(file.path);
+				return Promise.resolve(
+					`---\ntemplate: { id: ${file.path === first.path ? 'first' : 'second'}-${versions.get(file.path)}, name: Template }\n---\n`,
+				);
+			},
+			getAbstractFileByPath: (path: string) => (path === first.path ? first : second),
+		};
+		let registry = new TemplateRegistry(vault as never, () => 'Templates', createObsidianSpecialVariableRegistry());
+		await registry.refresh();
+		versions.set(first.path, 2);
+		await registry.refreshFile(first as never);
+		expect(reads).toEqual([first.path, second.path, first.path]);
+		expect(registry.getAll().map(template => template.id)).toEqual(['first-2', 'second-1']);
+	});
+});
+
+describe('plugin settings', () => {
+	test('loads the flat unreleased settings shape and validates stored values', () => {
+		expect(loadPluginSettings({ showContextMenuItems: false })).toEqual({ ...DEFAULT_SETTINGS, showContextMenuItems: false });
+		expect(loadPluginSettings({ templateFolderPath: 12, showContextMenuItems: 'yes' })).toEqual(DEFAULT_SETTINGS);
+	});
 });
 
 describe('Obsidian special variables', () => {
@@ -167,5 +213,18 @@ describe('metadata editor state', () => {
 		expect(merged).toContain('name: New');
 		expect(merged).toContain('custom: keep');
 		expect(merged.endsWith('Body')).toBeTrue();
+	});
+
+	test('keeps undeclared variable references as blocking errors', () => {
+		let content = '---\ntemplate: { id: old, name: Old }\n---\n{{ missing }}';
+		let state = createEditableTemplateMetadata(content);
+		let issues = validateEditableTemplateMetadata(
+			'Templates/old.md',
+			content,
+			state,
+			new Map(),
+			createObsidianSpecialVariableRegistry(),
+		);
+		expect(issues.some(issue => issue.severity === 'error' && issue.message.includes('missing'))).toBeTrue();
 	});
 });

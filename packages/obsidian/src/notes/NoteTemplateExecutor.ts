@@ -44,9 +44,10 @@ export class NoteTemplateExecutor {
 			if (userValues === null) return;
 
 			// ---- Step 4: Render ----
-			let safeJsApi = getSafeJsApi(this.plugin.app, this.plugin);
-			if (!safeJsApi) throw new Error('Safe JS must be installed and enabled to evaluate template expressions.');
-			let engine = new TemplateEngine(this.plugin.specialVariables, new SafeJsExpressionEvaluator(safeJsApi));
+			let engine = new TemplateEngine(
+				this.plugin.specialVariables,
+				new SafeJsExpressionEvaluator(() => getSafeJsApi(this.plugin.app, this.plugin) ?? null),
+			);
 			let rendered = await engine.render(selected, context, userValues, this.plugin.settings.defaultOutputFolderPath);
 			if (rendered.usedFolderFallback) new Notice('No active file was available; using the default output folder.');
 

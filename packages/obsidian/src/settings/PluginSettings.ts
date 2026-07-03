@@ -1,13 +1,13 @@
 export interface PluginSettings {
 	templateFolderPath: string;
 	defaultOutputFolderPath: string;
-	ui: { showContextMenuItems: boolean };
+	showContextMenuItems: boolean;
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
 	templateFolderPath: 'Templates',
 	defaultOutputFolderPath: '',
-	ui: { showContextMenuItems: true },
+	showContextMenuItems: true,
 };
 
 /** Deserialises raw plugin data, falling back to defaults for missing keys. */
@@ -17,11 +17,7 @@ export function loadPluginSettings(value: unknown): PluginSettings {
 		templateFolderPath: typeof loaded.templateFolderPath === 'string' ? loaded.templateFolderPath : DEFAULT_SETTINGS.templateFolderPath,
 		defaultOutputFolderPath:
 			typeof loaded.defaultOutputFolderPath === 'string' ? loaded.defaultOutputFolderPath : DEFAULT_SETTINGS.defaultOutputFolderPath,
-		ui: {
-			showContextMenuItems:
-				typeof loaded.ui?.showContextMenuItems === 'boolean'
-					? loaded.ui.showContextMenuItems
-					: DEFAULT_SETTINGS.ui.showContextMenuItems,
-		},
+		showContextMenuItems:
+			typeof loaded.showContextMenuItems === 'boolean' ? loaded.showContextMenuItems : DEFAULT_SETTINGS.showContextMenuItems,
 	};
 }

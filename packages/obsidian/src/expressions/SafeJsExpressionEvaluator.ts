@@ -4,12 +4,17 @@ import type { ResolvedVariables } from 'packages/core/src/index';
 
 /** Implements core expression evaluation using the Safe JS plugin sandbox. */
 export class SafeJsExpressionEvaluator extends ExpressionEvaluator {
-	constructor(private readonly api: Pick<SafeJsCallerApi, 'executeExpression'>) {
+	private api: Pick<SafeJsCallerApi, 'executeExpression'> | null = null;
+
+	constructor(private readonly getApi: () => Pick<SafeJsCallerApi, 'executeExpression'> | null) {
 		super();
 	}
 
 	override async evaluate(source: string, values: ResolvedVariables, sourcePath?: string): Promise<JsonValue> {
-		let result = await this.api.executeExpression(source, {
+		let api = this.api ?? this.getApi();
+		if (!api) throw new FormulaError('Safe JS must be installed and enabled to evaluate this expression.');
+		this.api = api;
+		let result = await api.executeExpression(source, {
 			inputs: this.toInputs(values),
 			permissions: [],
 			...(sourcePath ? { source: { path: sourcePath } } : {}),

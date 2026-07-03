@@ -15,29 +15,41 @@ export class TemplateRegistryMonitor {
 	) {}
 
 	register(): void {
-		let refresh = debounce(
+		let pendingFiles = new Map<string, TFile>();
+		let refreshFiles = debounce(
 			() => {
-				void this.registry.refresh().catch(error => {
-					console.error('Simple Templates: registry refresh failed', error);
+				let files = [...pendingFiles.values()];
+				pendingFiles.clear();
+				void Promise.all(files.map(file => this.registry.refreshFile(file))).catch(error => {
+					console.error('Simple Templates: registry file refresh failed', error);
 				});
 			},
 			250,
 			true,
 		);
-		this.plugin.registerEvent(this.plugin.app.vault.on('create', file => this.scheduleRefresh(file, refresh)));
-		this.plugin.registerEvent(this.plugin.app.vault.on('modify', file => this.scheduleRefresh(file, refresh)));
-		this.plugin.registerEvent(this.plugin.app.vault.on('rename', (file, oldPath) => this.scheduleRefresh(file, refresh, oldPath)));
-		this.plugin.registerEvent(this.plugin.app.vault.on('delete', file => this.scheduleRefresh(file, refresh)));
+		let scheduleFile = (file: TAbstractFile): void => {
+			if (!(file instanceof TFile) || !this.affectsRegistry(file)) return;
+			pendingFiles.set(file.path, file);
+			refreshFiles();
+		};
+		let refreshAll = (file: TAbstractFile, oldPath?: string): void => {
+			if (!this.affectsRegistry(file, oldPath)) return;
+			void this.registry.refresh().catch(error => console.error('Simple Templates: registry refresh failed', error));
+		};
+		this.plugin.registerEvent(this.plugin.app.vault.on('create', scheduleFile));
+		this.plugin.registerEvent(this.plugin.app.vault.on('modify', scheduleFile));
+		this.plugin.registerEvent(this.plugin.app.vault.on('rename', refreshAll));
+		this.plugin.registerEvent(this.plugin.app.vault.on('delete', refreshAll));
 	}
 
-	private scheduleRefresh(file: TAbstractFile, refresh: () => void, oldPath?: string): void {
+	private affectsRegistry(file: TAbstractFile, oldPath?: string): boolean {
 		let folder: string;
 		try {
 			folder = this.paths.normalizeFolder(this.getFolder());
 		} catch {
-			return;
+			return false;
 		}
 		let affectedPaths = oldPath === undefined ? [file.path] : [file.path, oldPath];
-		if (pathAffectsTemplateRegistry(folder, affectedPaths, file instanceof TFile)) refresh();
+		return pathAffectsTemplateRegistry(folder, affectedPaths, file instanceof TFile);
 	}
 }

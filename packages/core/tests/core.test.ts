@@ -122,7 +122,7 @@ output:
   filename: "{{ slug }}"
 custom: keep
 ---
-This content is above the output frontmatter and must be discarded.
+This content is above the output frontmatter and must be preserved.
 
 \`\`\`note-frontmatter
 title: "{{ title }}"
@@ -131,7 +131,7 @@ title: "{{ title }}"
 # {{ title }}
 `;
 
-	test('extracts metadata and removes one output frontmatter block', () => {
+	test('extracts metadata and removes one output frontmatter block without discarding surrounding content', () => {
 		let result = parseTemplate('Templates/project.md', source);
 		expect(result.issues).toEqual([]);
 		expect(result.template?.id).toBe('project-note');
@@ -139,8 +139,7 @@ title: "{{ title }}"
 		expect(result.template?.outputFrontmatterTemplate).toBe('title: "{{ title }}"');
 		expect(result.template?.ast?.noteFrontmatter?.references).toEqual(['title']);
 		expect(result.template?.ast?.filename?.references).toEqual(['slug']);
-		expect(result.template?.body).toBe('\n# {{ title }}\n');
-		expect(result.template?.body).not.toContain('must be discarded');
+		expect(result.template?.body).toBe('This content is above the output frontmatter and must be preserved.\n\n\n# {{ title }}\n');
 	});
 
 	test('ignores literal frontmatter examples inside longer fences and supports empty blocks', () => {
@@ -257,7 +256,7 @@ describe('renderer and expressions', () => {
 		let program = PROGRAM_PARSER.parse(template);
 		expect(program.references).toEqual(['first', 'second', 'third', 'fourth']);
 		expect(await renderer.renderProgram(program, { first: false, second: false, third: true, fourth: true })).toBe('3');
-		expect(evaluator.calls.map(call => call.expression)).toEqual(['first', 'second', 'third']);
+		expect(evaluator.calls).toEqual([]);
 	});
 
 	test('reports malformed template syntax with an exact source offset', () => {
@@ -361,6 +360,7 @@ describe('variable resolution', () => {
 			slug: { type: 'formula' as const, formula: 'title.toLowerCase().replaceAll(" ", "-")' },
 			loud: { type: 'formula' as const, formula: 'slug.toUpperCase()' },
 			count: { type: 'input' as const, inputType: 'number' as const, default: '2' },
+			copiedCount: { type: 'formula' as const, formula: 'count' },
 		};
 		expect(VariableResolver.needingInput(definitions)).toEqual(['title', 'count']);
 		expect(await resolveVariables(definitions, CONTEXT, { title: 'My Note' })).toEqual({
@@ -369,6 +369,7 @@ describe('variable resolution', () => {
 			slug: 'my-note',
 			loud: 'MY-NOTE',
 			count: 2,
+			copiedCount: 2,
 		});
 	});
 
@@ -391,9 +392,24 @@ describe('variable resolution', () => {
 		expect(
 			await rejected(resolveVariables({ title: { type: 'input', inputType: 'text', required: true } }, CONTEXT, {})),
 		).toBeInstanceOf(MissingRequiredVariableError);
-		expect(await rejected(resolveVariables({ a: { type: 'formula', formula: 'unknown()' } }, CONTEXT, {}))).toBeInstanceOf(
-			FormulaError,
+		let formulaError = await rejected(resolveVariables({ a: { type: 'formula', formula: 'unknown()' } }, CONTEXT, {}));
+		expect(formulaError).toBeInstanceOf(FormulaError);
+		expect(formulaError.message).toContain('declared above');
+	});
+
+	test('reports a useful error when a formula references a later formula', async () => {
+		let formulaError = await rejected(
+			resolveVariables(
+				{
+					first: { type: 'formula', formula: 'second' },
+					second: { type: 'formula', formula: '"value"' },
+				},
+				CONTEXT,
+				{},
+			),
 		);
+		expect(formulaError).toBeInstanceOf(FormulaError);
+		expect(formulaError.message).toContain('declared above');
 	});
 
 	test('rejects user values for computed variables', async () => {
@@ -412,6 +428,25 @@ describe('variable resolution', () => {
 				)
 			).message,
 		).toContain('outside its configured options');
+	});
+
+	test('treats whitespace and empty lists as missing required values', async () => {
+		for (let [inputType, value] of [
+			['text', '   '],
+			['list', []],
+		] as const) {
+			expect(
+				await rejected(resolveVariables({ value: { type: 'input', inputType, required: true } }, CONTEXT, { value })),
+			).toBeInstanceOf(MissingRequiredVariableError);
+		}
+	});
+
+	test('validates configured defaults before a template enters the registry', () => {
+		let result = parseTemplate(
+			'bad-default.md',
+			'---\ntemplate: { id: bad-default, name: Bad default }\nvariables:\n  count: { type: input, inputType: number, default: nope }\n---\n',
+		);
+		expect(result.issues.map(issue => issue.path)).toContain('variables.count.default');
 	});
 });
 
@@ -471,12 +506,15 @@ describe('frontmatter editing and complete rendering', () => {
 	});
 
 	test('preserves unknown metadata and body exactly', () => {
-		let content = '---\ntemplate:\n  id: old\ncssclasses: [wide]\n---\nBody\n```note-frontmatter\na: b\n```\n';
+		let content =
+			'---\n# Keep this comment\ntemplate:\n  id: old\ncssclasses: [wide] # And this one\n---\nBody\n```note-frontmatter\na: b\n```\n';
 		let merged = FRONTMATTER.mergeTemplate(content, { template: { id: 'new', name: 'New' }, variables: {}, output: undefined });
 		let parsed = FRONTMATTER.parse(merged);
 		expect(parsed.data.cssclasses).toEqual(['wide']);
 		expect(parsed.data.template).toEqual({ id: 'new', name: 'New' });
 		expect(parsed.body).toBe('Body\n```note-frontmatter\na: b\n```\n');
+		expect(merged).toContain('# Keep this comment');
+		expect(merged).toContain('# And this one');
 	});
 
 	test('renders a note without copying template metadata', async () => {

@@ -81,12 +81,7 @@ export function validateEditableTemplateMetadata(
 ): ValidationIssue[] {
 	let merged = mergeEditableTemplateMetadata(content, state);
 
-	// Run the standard parse/validation pipeline, downgrading
-	// "references variable" errors to warnings (they are expected during
-	// editing when variables have not been declared yet).
-	let issues = new TemplateParser(specialVariables)
-		.parse(sourcePath, merged)
-		.issues.map(issue => (issue.message.includes('references variable') ? { ...issue, severity: 'warning' as const } : issue));
+	let issues = new TemplateParser(specialVariables).parse(sourcePath, merged).issues;
 
 	// Check for duplicate template IDs across files
 	let duplicatePath = otherIds.get(state.template.id);

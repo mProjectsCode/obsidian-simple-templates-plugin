@@ -2,7 +2,7 @@
 
 Simple Templates creates Markdown notes from reusable, variable-driven templates. Templates stay as ordinary Markdown files in your vault, and formulas run as sandboxed expressions through the [Safe JS plugin](https://github.com/mProjectsCode/obsidian-safe-js-plugin).
 
-Install and enable Safe JS before creating notes from templates. Simple Templates passes template variable values to Safe JS as JSON-safe expression inputs and requests no permissions.
+Install and enable Safe JS when a template uses formulas or non-trivial expressions. Bare identifiers such as `{{ title }}` resolve locally and do not require Safe JS. Simple Templates passes template variable values to Safe JS as JSON-safe expression inputs and requests no permissions.
 
 ## Usage
 
@@ -10,7 +10,7 @@ Install and enable Safe JS before creating notes from templates. Simple Template
 2. Add `template.id` and `template.name` to a Markdown file's YAML frontmatter.
 3. Run **Templates: Create note from template**.
 
-Template variables, output paths, filename behavior, and conflict handling are configured in the template frontmatter. A `note-frontmatter` fenced block in the body becomes the created note's frontmatter; template metadata is never copied to the created note.
+Template variables, output paths, filename behavior, and conflict handling are configured in the template frontmatter. A `note-frontmatter` fenced block in the body becomes the created note's frontmatter; template metadata is never copied to the created note. Content before and after the fenced block remains in the note body.
 
 ````markdown
 ---

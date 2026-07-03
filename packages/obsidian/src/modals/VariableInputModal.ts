@@ -1,4 +1,4 @@
-import { VariableResolver } from 'packages/core/src/index';
+import { InputValueService, VariableResolver } from 'packages/core/src/index';
 import type { ResolvedVariables, VariableDefinition } from 'packages/core/src/index';
 import type { App } from 'obsidian';
 import { Modal, SettingGroup } from 'obsidian';
@@ -15,6 +15,7 @@ export class VariableInputModal extends Modal {
 	private resolve: (values: ResolvedVariables | null) => void = () => undefined;
 	private submitted = false;
 	private errorEl: HTMLElement | null = null;
+	private readonly inputValues = new InputValueService();
 
 	/** Converts an arbitrary value to its display string in the input fields. */
 	private displayValue(value: unknown): string {
@@ -115,26 +116,34 @@ export class VariableInputModal extends Modal {
 					}),
 			);
 		} else {
-			setting.addText(text =>
+			setting.addText(text => {
+				if (definition.inputType === 'number') text.inputEl.type = 'number';
+				else if (definition.inputType === 'date') text.inputEl.type = 'date';
+				else if (definition.inputType === 'datetime') text.inputEl.type = 'datetime-local';
 				text.setValue(this.displayValue(current)).onChange(value => {
 					this.values[name] = value;
-				}),
-			);
+				});
+			});
 		}
 	}
 
 	/** Validates required fields and resolves the promise. */
 	private submit(): void {
-		let missing = this.inputNames.flatMap(name => {
+		let errors = this.inputNames.flatMap(name => {
 			let definition = this.definitions[name];
 			let value = this.values[name];
-			return definition?.type === 'input' && definition.required && (value === undefined || value === '')
-				? [definition.label ?? name]
-				: [];
+			if (definition?.type !== 'input') return [];
+			if (definition.required && this.inputValues.isEmpty(value)) return [`${definition.label ?? name} is required.`];
+			try {
+				this.values[name] = this.inputValues.coerce(name, definition, value);
+				return [];
+			} catch (error) {
+				return [error instanceof Error ? error.message : String(error)];
+			}
 		});
 
-		if (missing.length > 0) {
-			this.errorEl?.setText(`Required: ${missing.join(', ')}.`);
+		if (errors.length > 0) {
+			this.errorEl?.setText(errors.join(' '));
 			return;
 		}
 

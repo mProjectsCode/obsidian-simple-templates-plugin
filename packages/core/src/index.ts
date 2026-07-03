@@ -13,4 +13,5 @@ export * from 'packages/core/src/templates/TemplateProgramParser';
 export * from 'packages/core/src/templates/TemplateRenderer';
 export * from 'packages/core/src/templates/TemplateValidator';
 export * from 'packages/core/src/variables/SpecialVariableRegistry';
+export * from 'packages/core/src/variables/InputValueService';
 export * from 'packages/core/src/variables/VariableResolver';

@@ -325,7 +325,7 @@ export class TemplateMetadataEditorModal extends Modal {
 					this.validationEl.setText('No validation issues.');
 				} else {
 					for (let issue of issues) {
-						this.validationEl.createEl('div', {
+						this.validationEl.createDiv({
 							text: `${issue.severity === 'error' ? 'Error' : 'Warning'}: ${issue.message}`,
 						});
 					}

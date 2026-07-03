@@ -39,7 +39,7 @@ export default defineConfig(({ mode }) => {
 			target: 'es2022',
 			sourcemap: prod ? false : 'inline',
 			cssCodeSplit: false,
-			emptyOutDir: false,
+			emptyOutDir: prod,
 			outDir,
 			rolldownOptions: {
 				input: {

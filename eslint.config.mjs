@@ -1,33 +1,23 @@
 // @ts-check
 
-import eslint from '@eslint/js';
-import { defineConfig } from 'eslint/config';
+import { defineConfig, globalIgnores } from 'eslint/config';
 import no_relative_import_paths from 'eslint-plugin-no-relative-import-paths';
 import obsidianmd from 'eslint-plugin-obsidianmd';
-import tseslint from 'typescript-eslint';
+import tsparser from '@typescript-eslint/parser';
 
 export default defineConfig(
-	{
-		ignores: ['node_modules/', 'exampleVault/', 'dist/', 'main.js'],
-	},
+	globalIgnores(['node_modules/**', 'dist/**', 'exampleVault/**', '**/*.test.ts', 'main.js', 'vite.config.mts']),
+	...obsidianmd.configs.recommended,
 	{
 		files: ['packages/**/*.ts'],
-		extends: [
-			eslint.configs.recommended,
-			...tseslint.configs.recommended,
-			...tseslint.configs.recommendedTypeChecked,
-			...tseslint.configs.stylisticTypeChecked,
-			...obsidianmd.configs.recommended,
-		],
 		languageOptions: {
-			parser: tseslint.parser,
+			parser: tsparser,
 			parserOptions: {
-				project: true,
+				project: './tsconfig.json',
 			},
 		},
 		plugins: {
 			'no-relative-import-paths': no_relative_import_paths,
-			obsidianmd,
 		},
 		rules: {
 			'@typescript-eslint/consistent-type-imports': ['error', { prefer: 'type-imports', fixStyle: 'separate-type-imports' }],
@@ -38,16 +28,6 @@ export default defineConfig(
 				{ argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_', destructuredArrayIgnorePattern: '^_', varsIgnorePattern: '^_' },
 			],
 			'no-relative-import-paths/no-relative-import-paths': ['warn', { allowSameFolder: false }],
-		},
-	},
-	{
-		files: ['packages/**/tests/**/*.ts'],
-		languageOptions: {
-			globals: { Bun: 'readonly' },
-		},
-		rules: {
-			'@typescript-eslint/no-empty-function': 'off',
-			'no-relative-import-paths/no-relative-import-paths': 'off',
 		},
 	},
 );
