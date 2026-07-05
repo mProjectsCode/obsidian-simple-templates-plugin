@@ -1,6 +1,7 @@
 import { FrontmatterService } from 'packages/core/src/index';
 import type { ValidationIssue, VariableDefinition } from 'packages/core/src/index';
 import {
+	applyEditableTemplateMetadata,
 	createEditableTemplateMetadata,
 	mergeEditableTemplateMetadata,
 	validateEditableTemplateMetadata,
@@ -336,8 +337,7 @@ export class TemplateMetadataEditorModal extends Modal {
 		}
 	}
 
-	/** Validates, checks for external changes, and writes the merged content
-	 *  back to the vault. */
+	/** Validates, checks for external changes, and updates template frontmatter. */
 	private async save(): Promise<void> {
 		let issues = this.getIssues();
 		if (issues.some(issue => issue.severity === 'error')) {
@@ -361,9 +361,10 @@ export class TemplateMetadataEditorModal extends Modal {
 			return;
 		}
 
-		let mergedContent = this.mergedContent();
-		await this.app.vault.modify(this.file, mergedContent);
-		this.originalContent = mergedContent;
+		await this.app.fileManager.processFrontMatter(this.file, (frontmatter: Record<string, unknown>) => {
+			applyEditableTemplateMetadata(frontmatter, this.state);
+		});
+		this.originalContent = await this.app.vault.read(this.file);
 		await this.onSaved();
 		new Notice(`Saved template metadata for "${this.file.basename}".`);
 		this.close();

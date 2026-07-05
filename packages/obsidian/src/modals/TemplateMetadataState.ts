@@ -71,6 +71,13 @@ export function mergeEditableTemplateMetadata(content: string, state: EditableTe
 	return FRONTMATTER.mergeTemplate(content, { template: state.template, variables: state.variables, output: state.output });
 }
 
+/** Replaces plugin-owned keys while preserving unrelated frontmatter properties. */
+export function applyEditableTemplateMetadata(frontmatter: Record<string, unknown>, state: EditableTemplateMetadata): void {
+	frontmatter.template = structuredClone(state.template);
+	frontmatter.variables = structuredClone(state.variables);
+	frontmatter.output = structuredClone(state.output);
+}
+
 /** Validates the merged content and checks for duplicate template IDs. */
 export function validateEditableTemplateMetadata(
 	sourcePath: string,

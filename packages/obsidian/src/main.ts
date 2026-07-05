@@ -39,23 +39,28 @@ export default class SimpleTemplatesPlugin extends Plugin {
 
 	private registerCommands(): void {
 		this.addCommand({
+			id: 'create-template',
+			name: 'Create template',
+			callback: () => this.metadata.create(),
+		});
+		this.addCommand({
 			id: 'create-note-from-template',
-			name: 'Templates: Create note from template',
+			name: 'Create note from template',
 			callback: () => this.executor.execute(),
 		});
 		this.addCommand({
 			id: 'edit-current-template-metadata',
-			name: 'Templates: Edit current template metadata',
+			name: 'Edit current template metadata',
 			callback: () => this.metadata.editCurrent(),
 		});
 		this.addCommand({
 			id: 'edit-template-metadata',
-			name: 'Templates: Edit template metadata…',
+			name: 'Edit template metadata…',
 			callback: () => this.metadata.pick(),
 		});
 		this.addCommand({
 			id: 'refresh-template-registry',
-			name: 'Templates: Refresh template registry',
+			name: 'Refresh template registry',
 			callback: async () => {
 				await this.registry.refresh();
 				new Notice(`Found ${this.registry.getAll().length} valid template(s).`);
@@ -63,7 +68,7 @@ export default class SimpleTemplatesPlugin extends Plugin {
 		});
 		this.addCommand({
 			id: 'validate-templates',
-			name: 'Templates: Validate templates',
+			name: 'Validate templates',
 			callback: () => this.metadata.showValidationSummary(),
 		});
 	}

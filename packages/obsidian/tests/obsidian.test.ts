@@ -3,6 +3,7 @@ import { MockTFile } from 'packages/obsidian/tests/ObsidianMock';
 import { FileConflictError, FormulaError } from 'packages/core/src/index';
 import { SafeJsExpressionEvaluator } from 'packages/obsidian/src/expressions/SafeJsExpressionEvaluator';
 import {
+	applyEditableTemplateMetadata,
 	createEditableTemplateMetadata,
 	mergeEditableTemplateMetadata,
 	validateEditableTemplateMetadata,
@@ -17,6 +18,7 @@ import { TemplateRegistry } from 'packages/obsidian/src/templates/TemplateRegist
 import { createObsidianSpecialVariableRegistry, ObsidianVariableEnvironment } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
 import type { SafeJsExecutionResult, SafeJsExpressionOptions } from '@lemons_dev/obsidian-safe-js-api';
 import { DEFAULT_SETTINGS, loadPluginSettings } from 'packages/obsidian/src/settings/PluginSettings';
+import { TemplateCreationService } from 'packages/obsidian/src/templates/TemplateCreationService';
 
 class MockSafeJsExpressionApi {
 	readonly calls: { expression: string; options: SafeJsExpressionOptions }[] = [];
@@ -235,6 +237,20 @@ describe('plugin settings', () => {
 	});
 });
 
+describe('template creation', () => {
+	test('derives editable defaults and validates the final identity', () => {
+		let creation = new TemplateCreationService();
+		expect(creation.defaultsForName(' Über Project Note ')).toEqual({ id: 'uber-project-note', filename: 'uber-project-note.md' });
+		expect(creation.normalize({ name: ' Project note ', id: 'project_note', filename: 'Project note' })).toEqual({
+			name: 'Project note',
+			id: 'project_note',
+			filename: 'Project note.md',
+		});
+		expect(() => creation.normalize({ name: 'Bad', id: 'not valid', filename: 'bad.md' })).toThrow('Template ID');
+		expect(() => creation.normalize({ name: 'Bad', id: 'valid', filename: '../bad.md' })).toThrow('path separators');
+	});
+});
+
 describe('Obsidian special variables', () => {
 	test('resolves built-in sources through a lazy execution environment', async () => {
 		let reads = 0;
@@ -280,6 +296,14 @@ describe('metadata editor state', () => {
 		expect(merged).toContain('name: New');
 		expect(merged).toContain('custom: keep');
 		expect(merged.endsWith('Body')).toBeTrue();
+	});
+
+	test('updates only plugin-owned frontmatter keys', () => {
+		let state = createEditableTemplateMetadata('---\ntemplate: { id: old, name: Old }\n---\n');
+		state.template = { id: 'new', name: 'New' };
+		let frontmatter: Record<string, unknown> = { template: { id: 'old' }, custom: 'keep' };
+		applyEditableTemplateMetadata(frontmatter, state);
+		expect(frontmatter).toEqual({ template: { id: 'new', name: 'New' }, variables: {}, output: {}, custom: 'keep' });
 	});
 
 	test('keeps undeclared variable references as blocking errors', () => {
