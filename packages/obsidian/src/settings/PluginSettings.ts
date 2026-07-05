@@ -16,12 +16,18 @@ const PATHS = new VaultPathService();
 
 /** Deserialises raw plugin data, falling back to defaults for missing keys. */
 export function loadPluginSettings(value: unknown): PluginSettings {
-	let loaded = value !== null && typeof value === 'object' ? (value as Partial<PluginSettings>) : {};
+	let loadedSettings: Partial<PluginSettings> = {};
+	if (value !== null && typeof value === 'object') loadedSettings = value;
+
+	let showContextMenuItems = DEFAULT_SETTINGS.showContextMenuItems;
+	if (typeof loadedSettings.showContextMenuItems === 'boolean') {
+		showContextMenuItems = loadedSettings.showContextMenuItems;
+	}
+
 	return {
-		templateFolderPath: loadFolder(loaded.templateFolderPath, DEFAULT_SETTINGS.templateFolderPath),
-		defaultOutputFolderPath: loadFolder(loaded.defaultOutputFolderPath, DEFAULT_SETTINGS.defaultOutputFolderPath),
-		showContextMenuItems:
-			typeof loaded.showContextMenuItems === 'boolean' ? loaded.showContextMenuItems : DEFAULT_SETTINGS.showContextMenuItems,
+		templateFolderPath: loadFolder(loadedSettings.templateFolderPath, DEFAULT_SETTINGS.templateFolderPath),
+		defaultOutputFolderPath: loadFolder(loadedSettings.defaultOutputFolderPath, DEFAULT_SETTINGS.defaultOutputFolderPath),
+		showContextMenuItems,
 	};
 }
 

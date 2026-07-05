@@ -103,11 +103,17 @@ export class VariableEditorModal extends Modal {
 
 	private renderDetails(): void {
 		if (!this.detailsEl) return;
+
 		this.detailsEl.empty();
 		let group = new SettingGroup(this.detailsEl).setHeading(this.typeLabel(this.definition.type));
-		if (this.definition.type === 'input') this.renderInput(group, this.definition);
-		else if (this.definition.type === 'special') this.renderSpecial(group, this.definition);
-		else this.renderFormula(group, this.definition);
+
+		if (this.definition.type === 'input') {
+			this.renderInput(group, this.definition);
+		} else if (this.definition.type === 'special') {
+			this.renderSpecial(group, this.definition);
+		} else {
+			this.renderFormula(group, this.definition);
+		}
 	}
 
 	private renderInput(group: SettingGroup, definition: Extract<VariableDefinition, { type: 'input' }>): void {
@@ -116,10 +122,14 @@ export class VariableEditorModal extends Modal {
 				.setName('Input type')
 				.setDesc('Controls the field shown to the user and how its value is validated.')
 				.addDropdown(dropdown => {
-					for (let type of VARIABLE_INPUT_TYPES) dropdown.addOption(type, this.inputTypeLabel(type));
+					for (let type of VARIABLE_INPUT_TYPES) {
+						dropdown.addOption(type, this.inputTypeLabel(type));
+					}
 					dropdown.setValue(definition.inputType).onChange(value => {
 						definition.inputType = value as VariableInputType;
-						if (definition.inputType !== 'select' && definition.inputType !== 'multiselect') delete definition.options;
+						if (definition.inputType !== 'select' && definition.inputType !== 'multiselect') {
+							delete definition.options;
+						}
 						this.renderDetails();
 					});
 				});
@@ -155,7 +165,7 @@ export class VariableEditorModal extends Modal {
 				);
 		});
 
-		if (definition.inputType === 'select' || definition.inputType === 'multiselect')
+		if (definition.inputType === 'select' || definition.inputType === 'multiselect') {
 			group.addSetting(setting => {
 				setting
 					.setName('Options')
@@ -171,6 +181,7 @@ export class VariableEditorModal extends Modal {
 						}),
 					);
 			});
+		}
 	}
 
 	private renderSpecial(group: SettingGroup, definition: Extract<VariableDefinition, { type: 'special' }>): void {
@@ -180,7 +191,9 @@ export class VariableEditorModal extends Modal {
 				.setDesc('Select the Obsidian value to use when the template runs.')
 				.addDropdown(dropdown => {
 					dropdown.addOption('', 'Choose a source…');
-					for (let [source, sourceDefinition] of this.specialVariables) dropdown.addOption(source, sourceDefinition.label);
+					for (let [source, sourceDefinition] of this.specialVariables) {
+						dropdown.addOption(source, sourceDefinition.label);
+					}
 					dropdown.setValue(definition.source).onChange(value => {
 						definition.source = value;
 					});
@@ -203,16 +216,24 @@ export class VariableEditorModal extends Modal {
 
 	private changeType(type: VariableType): void {
 		if (type === this.definition.type) return;
+
 		this.drafts.set(this.definition.type, this.definition);
-		let common = {
-			...(this.definition.label ? { label: this.definition.label } : {}),
-			...(this.definition.description ? { description: this.definition.description } : {}),
-		};
+
+		let common: Pick<VariableDefinition, 'label' | 'description'> = {};
+		if (this.definition.label) common.label = this.definition.label;
+		if (this.definition.description) common.description = this.definition.description;
+
 		let draft = this.drafts.get(type);
-		if (draft) this.definition = { ...draft, ...common };
-		else if (type === 'input') this.definition = { ...common, type, inputType: 'text' };
-		else if (type === 'special') this.definition = { ...common, type, source: '' };
-		else this.definition = { ...common, type, formula: '' };
+		if (draft) {
+			this.definition = { ...draft, ...common };
+		} else if (type === 'input') {
+			this.definition = { ...common, type, inputType: 'text' };
+		} else if (type === 'special') {
+			this.definition = { ...common, type, source: '' };
+		} else {
+			this.definition = { ...common, type, formula: '' };
+		}
+
 		this.drafts.set(type, this.definition);
 		this.errorEl?.empty();
 		this.renderDetails();
@@ -224,12 +245,12 @@ export class VariableEditorModal extends Modal {
 	}
 
 	private serializeDefault(value: unknown): string {
-		return value === undefined
-			? ''
-			: this.frontmatter
-					.serialize({ value })
-					.replace(/^value:\s*/, '')
-					.trim();
+		if (value === undefined) return '';
+
+		return this.frontmatter
+			.serialize({ value })
+			.replace(/^value:\s*/, '')
+			.trim();
 	}
 
 	private typeLabel(type: VariableType): string {

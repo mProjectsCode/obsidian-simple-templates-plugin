@@ -40,34 +40,44 @@ export class TemplateParser {
 
 	parse(sourcePath: string, content: string): ParseResult {
 		try {
-			let document = this.frontmatter.parse(content);
-			let identity = this.readIdentity(document.data.template);
-			let variables = Object.fromEntries(
-				Object.entries(this.asObject(document.data.variables) ?? {}).map(([name, value]) => [
-					name,
-					(this.asObject(value) ?? { type: '' }) as unknown as VariableDefinition,
-				]),
-			);
-			let output = this.asObject(document.data.output) as NoteOutputDefinition | null;
-			let { body, blocks } = this.extractOutputFrontmatter(document.body);
+			let parsedDocument = this.frontmatter.parse(content);
+			let templateIdentity = this.readIdentity(parsedDocument.data.template);
+			let variableDefinitions: Record<string, VariableDefinition> = {};
+			let rawVariableDefinitions = this.asObject(parsedDocument.data.variables) ?? {};
+			for (let [variableName, value] of Object.entries(rawVariableDefinitions)) {
+				variableDefinitions[variableName] = (this.asObject(value) ?? { type: '' }) as unknown as VariableDefinition;
+			}
+
+			let outputDefinition = this.asObject(parsedDocument.data.output) as NoteOutputDefinition | null;
+			let extractedFrontmatter = this.extractOutputFrontmatter(parsedDocument.body);
+			let outputFrontmatterTemplate = extractedFrontmatter.blocks[0];
 			let template: TemplateDefinition = {
-				...identity,
+				...templateIdentity,
 				sourcePath,
-				variables,
-				...(output ? { output } : {}),
-				body,
-				...(blocks[0] !== undefined ? { outputFrontmatterTemplate: blocks[0] } : {}),
-				rawFrontmatter: document.raw,
-				parsedFrontmatter: document.data,
-				ast: this.compiler.compile(body, blocks[0], output ?? undefined),
+				variables: variableDefinitions,
+				body: extractedFrontmatter.body,
+				rawFrontmatter: parsedDocument.raw,
+				parsedFrontmatter: parsedDocument.data,
+				ast: this.compiler.compile(extractedFrontmatter.body, outputFrontmatterTemplate, outputDefinition ?? undefined),
 			};
-			let issues = this.uniqueIssues([...this.validator.validateMetadata(document.data), ...this.validator.validate(template)]);
-			if (blocks.length > 1)
+			if (outputDefinition) template.output = outputDefinition;
+			if (outputFrontmatterTemplate !== undefined) template.outputFrontmatterTemplate = outputFrontmatterTemplate;
+
+			let metadataIssues = this.validator.validateMetadata(parsedDocument.data);
+			let templateIssues = this.validator.validate(template);
+			let issues = this.uniqueIssues([...metadataIssues, ...templateIssues]);
+			if (extractedFrontmatter.blocks.length > 1) {
 				issues.push({ severity: 'error', message: 'A template may contain at most one note-frontmatter block.' });
-			if (!document.hasFrontmatter) issues.unshift({ severity: 'error', message: 'Template metadata frontmatter is missing.' });
+			}
+
+			if (!parsedDocument.hasFrontmatter) {
+				issues.unshift({ severity: 'error', message: 'Template metadata frontmatter is missing.' });
+			}
+
 			return { template, issues };
 		} catch (error) {
-			return { template: null, issues: [{ severity: 'error', message: error instanceof Error ? error.message : String(error) }] };
+			let message = error instanceof Error ? error.message : String(error);
+			return { template: null, issues: [{ severity: 'error', message }] };
 		}
 	}
 
@@ -88,28 +98,40 @@ export class TemplateParser {
 		for (let index = 0; index < lines.length; index += 1) {
 			let line = lines[index];
 			if (!line) continue;
+
 			let fence = this.openingFence(line.text);
 			if (!fence) continue;
+
 			let closingIndex = index + 1;
-			while (closingIndex < lines.length && !this.closesFence(lines[closingIndex]?.text ?? '', fence)) closingIndex += 1;
+			while (closingIndex < lines.length && !this.closesFence(lines[closingIndex]?.text ?? '', fence)) {
+				closingIndex += 1;
+			}
 			if (closingIndex >= lines.length) {
 				if (fence.info === 'note-frontmatter') throw new TemplateParseError('The note-frontmatter block is not closed.');
 				break;
 			}
+
 			if (fence.info === 'note-frontmatter') {
 				let closing = lines[closingIndex];
 				if (!closing) break;
 				blocks.push(this.withoutTrailingNewline(source.slice(line.end, closing.start)));
 				removals.push({ start: line.start, end: closing.end });
 			}
+
 			index = closingIndex;
 		}
+
 		if (removals.length === 0) return { body: source, blocks };
+
 		let body = source;
+		// Remove later ranges first so earlier source offsets remain valid.
 		for (let index = removals.length - 1; index >= 0; index -= 1) {
 			let removal = removals[index];
-			if (removal) body = body.slice(0, removal.start) + body.slice(removal.end);
+			if (removal) {
+				body = body.slice(0, removal.start) + body.slice(removal.end);
+			}
 		}
+
 		return { body, blocks };
 	}
 
@@ -130,22 +152,39 @@ export class TemplateParser {
 
 	private openingFence(line: string): Fence | null {
 		let index = 0;
-		while (index < 3 && line[index] === ' ') index += 1;
+		while (index < 3 && line[index] === ' ') {
+			index += 1;
+		}
+
 		let character = line[index];
 		if (character !== '`' && character !== '~') return null;
+
 		let markerStart = index;
-		while (line[index] === character) index += 1;
+		while (line[index] === character) {
+			index += 1;
+		}
+
 		if (index - markerStart < 3) return null;
 		return { character, length: index - markerStart, info: line.slice(index).trim() };
 	}
 
 	private closesFence(line: string, fence: Fence): boolean {
 		let index = 0;
-		while (index < 3 && line[index] === ' ') index += 1;
+		while (index < 3 && line[index] === ' ') {
+			index += 1;
+		}
+
 		let markerStart = index;
-		while (line[index] === fence.character) index += 1;
+		while (line[index] === fence.character) {
+			index += 1;
+		}
+
 		if (index - markerStart < fence.length) return false;
-		for (; index < line.length; index += 1) if (line[index] !== ' ' && line[index] !== '\t') return false;
+
+		for (; index < line.length; index += 1) {
+			if (line[index] !== ' ' && line[index] !== '\t') return false;
+		}
+
 		return true;
 	}
 
@@ -156,16 +195,17 @@ export class TemplateParser {
 	}
 
 	private asObject(value: unknown): Record<string, unknown> | null {
-		return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+		if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+		return value as Record<string, unknown>;
 	}
 
 	private readIdentity(value: unknown): TemplateIdentity {
-		let identity = this.asObject(value) ?? {};
-		return {
-			id: typeof identity.id === 'string' ? identity.id : '',
-			name: typeof identity.name === 'string' ? identity.name : '',
-			...(typeof identity.description === 'string' ? { description: identity.description } : {}),
-			...(Array.isArray(identity.tags) && identity.tags.every(tag => typeof tag === 'string') ? { tags: identity.tags } : {}),
-		};
+		let fields = this.asObject(value) ?? {};
+		let identity: TemplateIdentity = { id: '', name: '' };
+		if (typeof fields.id === 'string') identity.id = fields.id;
+		if (typeof fields.name === 'string') identity.name = fields.name;
+		if (typeof fields.description === 'string') identity.description = fields.description;
+		if (Array.isArray(fields.tags) && fields.tags.every(tag => typeof tag === 'string')) identity.tags = fields.tags;
+		return identity;
 	}
 }

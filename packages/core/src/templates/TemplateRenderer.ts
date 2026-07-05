@@ -17,16 +17,31 @@ export class TemplateRenderer {
 	}
 
 	async render(template: string | TemplateProgram, values: ResolvedVariables, sourcePath?: string): Promise<string> {
-		return this.renderProgram(typeof template === 'string' ? this.parser.parse(template) : template, values, sourcePath);
+		let program: TemplateProgram;
+		if (typeof template === 'string') {
+			program = this.parser.parse(template);
+		} else {
+			program = template;
+		}
+
+		return this.renderProgram(program, values, sourcePath);
 	}
 
 	async renderAst(ast: TemplateAst, values: ResolvedVariables, sourcePath?: string): Promise<RenderedTemplateAst> {
-		return {
-			body: await this.renderProgram(ast.body, values, sourcePath),
-			...(ast.noteFrontmatter ? { noteFrontmatter: await this.renderProgram(ast.noteFrontmatter, values, sourcePath) } : {}),
-			...(ast.filename ? { filename: await this.renderProgram(ast.filename, values, sourcePath) } : {}),
-			...(ast.folder ? { folder: await this.renderProgram(ast.folder, values, sourcePath) } : {}),
-		};
+		let renderedAst: RenderedTemplateAst = { body: await this.renderProgram(ast.body, values, sourcePath) };
+		if (ast.noteFrontmatter) {
+			renderedAst.noteFrontmatter = await this.renderProgram(ast.noteFrontmatter, values, sourcePath);
+		}
+
+		if (ast.filename) {
+			renderedAst.filename = await this.renderProgram(ast.filename, values, sourcePath);
+		}
+
+		if (ast.folder) {
+			renderedAst.folder = await this.renderProgram(ast.folder, values, sourcePath);
+		}
+
+		return renderedAst;
 	}
 
 	private async renderNodes(
@@ -50,7 +65,9 @@ export class TemplateRenderer {
 					matched = true;
 					break;
 				}
-				if (!matched) await this.renderNodes(node.elseChildren, values, sourcePath, output);
+				if (!matched) {
+					await this.renderNodes(node.elseChildren, values, sourcePath, output);
+				}
 				continue;
 			}
 

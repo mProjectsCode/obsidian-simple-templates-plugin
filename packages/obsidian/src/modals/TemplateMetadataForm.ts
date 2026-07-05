@@ -65,44 +65,58 @@ export class TemplateMetadataForm {
 
 	renderVariables(containerEl: HTMLElement): void {
 		let group = new SettingGroup(containerEl).setHeading('Variables');
-		let entries = Object.entries(this.state.variables);
-		for (let [index, [name, definition]] of entries.entries()) {
+		let variableEntries = Object.entries(this.state.variables);
+
+		for (let [index, variableEntry] of variableEntries.entries()) {
+			let variableName = variableEntry[0];
+			let definition = variableEntry[1];
+
 			group.addSetting(setting => {
-				let detail = definition.type === 'input' ? `input · ${definition.inputType}` : definition.type;
-				setting.setName(name).setDesc(definition.label ? `${definition.label} · ${detail}` : detail);
+				let typeDescription: string = definition.type;
+				if (definition.type === 'input') {
+					typeDescription = `input · ${definition.inputType}`;
+				}
+
+				let description = typeDescription;
+				if (definition.label) {
+					description = `${definition.label} · ${typeDescription}`;
+				}
+
+				setting.setName(variableName).setDesc(description);
 				setting
 					.addButton(button =>
 						button
 							.setIcon('arrow-up')
-							.setTooltip(`Move ${name} up`)
+							.setTooltip(`Move ${variableName} up`)
 							.setDisabled(index === 0)
 							.onClick(() => this.moveVariable(index, index - 1)),
 					)
 					.addButton(button =>
 						button
 							.setIcon('arrow-down')
-							.setTooltip(`Move ${name} down`)
-							.setDisabled(index === entries.length - 1)
+							.setTooltip(`Move ${variableName} down`)
+							.setDisabled(index === variableEntries.length - 1)
 							.onClick(() => this.moveVariable(index, index + 1)),
 					)
 					.addButton(button =>
 						button
 							.setIcon('pencil')
-							.setTooltip(`Edit ${name}`)
-							.onClick(() => this.openVariableEditor(name, definition)),
+							.setTooltip(`Edit ${variableName}`)
+							.onClick(() => this.openVariableEditor(variableName, definition)),
 					)
 					.addButton(button =>
 						button
 							.setIcon('trash-2')
-							.setTooltip(`Delete ${name}`)
+							.setTooltip(`Delete ${variableName}`)
 							.setDestructive()
 							.onClick(() => {
-								delete this.state.variables[name];
+								delete this.state.variables[variableName];
 								this.callbacks.render();
 							}),
 					);
 			});
 		}
+
 		group.addSetting(setting => {
 			setting.addButton(button => button.setButtonText('Add variable').onClick(() => this.openNewVariableEditor()));
 		});
@@ -118,22 +132,28 @@ export class TemplateMetadataForm {
 					.addOption('path', 'Explicit path')
 					.setValue(mode)
 					.onChange(value => {
-						this.state.output.folder =
-							value === 'path' ? { mode: 'path', path: '' } : { mode: value as 'default' | 'same-as-active-file' };
+						if (value === 'path') {
+							this.state.output.folder = { mode: 'path', path: '' };
+						} else {
+							this.state.output.folder = { mode: value as 'default' | 'same-as-active-file' };
+						}
 						this.callbacks.render();
 					}),
 			);
 		});
+
 		if (this.state.output.folder?.mode === 'path') {
+			let explicitFolder = this.state.output.folder;
 			group.addSetting(setting => {
 				setting.setName('Folder path').addText(text =>
-					text.setValue(this.state.output.folder?.mode === 'path' ? this.state.output.folder.path : '').onChange(value => {
-						if (this.state.output.folder?.mode === 'path') this.state.output.folder.path = value;
+					text.setValue(explicitFolder.path).onChange(value => {
+						explicitFolder.path = value;
 						this.callbacks.updatePreview();
 					}),
 				);
 			});
 		}
+
 		group.addSetting(setting => {
 			setting.setName('Filename template').addText(text =>
 				text.setValue(this.state.output.filename ?? '').onChange(value => {
@@ -175,10 +195,14 @@ export class TemplateMetadataForm {
 			new Set(Object.keys(this.state.variables)),
 			this.specialVariables,
 			(updatedName, updatedDefinition) => {
-				let entries = Object.entries(this.state.variables).map(([entryName, entryDefinition]) =>
-					entryName === name ? ([updatedName, updatedDefinition] as const) : ([entryName, entryDefinition] as const),
-				);
-				this.state.variables = Object.fromEntries(entries);
+				let variableEntries = Object.entries(this.state.variables);
+				let variableIndex = variableEntries.findIndex(entry => entry[0] === name);
+
+				if (variableIndex === -1) return;
+
+				variableEntries[variableIndex] = [updatedName, updatedDefinition];
+				this.state.variables = Object.fromEntries(variableEntries);
+
 				this.callbacks.render();
 			},
 		).open();
@@ -187,6 +211,7 @@ export class TemplateMetadataForm {
 	private openNewVariableEditor(): void {
 		let index = 1;
 		while (`variable${index}` in this.state.variables) index += 1;
+
 		new VariableEditorModal(
 			this.app,
 			null,
@@ -202,11 +227,14 @@ export class TemplateMetadataForm {
 	}
 
 	private moveVariable(fromIndex: number, toIndex: number): void {
-		let entries = Object.entries(this.state.variables);
-		let [entry] = entries.splice(fromIndex, 1);
-		if (!entry) return;
-		entries.splice(toIndex, 0, entry);
-		this.state.variables = Object.fromEntries(entries);
+		let variableEntries = Object.entries(this.state.variables);
+		let variableEntry = variableEntries.splice(fromIndex, 1)[0];
+
+		if (!variableEntry) return;
+
+		variableEntries.splice(toIndex, 0, variableEntry);
+		this.state.variables = Object.fromEntries(variableEntries);
+
 		this.callbacks.render();
 	}
 }

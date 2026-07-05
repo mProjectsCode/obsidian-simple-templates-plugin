@@ -14,7 +14,10 @@ export class TemplateCreationService {
 			.trim()
 			.replace(/[^a-z0-9]+/g, '-')
 			.replace(/^-|-$/g, '');
-		return { id: slug, filename: slug ? `${slug}.md` : '' };
+		let filename = '';
+		if (slug) filename = `${slug}.md`;
+
+		return { id: slug, filename };
 	}
 
 	normalize(request: TemplateCreationRequest): TemplateCreationRequest {
@@ -34,9 +37,9 @@ export class TemplateCreationService {
 			throw new Error('File name contains unsupported characters.');
 		if (/[. ]$/.test(normalized.filename)) throw new Error('File name cannot end with a dot or space.');
 		if (/^\.md$/i.test(normalized.filename)) throw new Error('Enter a file name before the Markdown extension.');
-		return {
-			...normalized,
-			filename: normalized.filename.toLowerCase().endsWith('.md') ? normalized.filename : `${normalized.filename}.md`,
-		};
+		let filename = normalized.filename;
+		if (!filename.toLowerCase().endsWith('.md')) filename = `${filename}.md`;
+
+		return { ...normalized, filename };
 	}
 }

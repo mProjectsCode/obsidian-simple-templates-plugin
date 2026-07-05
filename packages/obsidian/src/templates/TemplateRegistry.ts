@@ -20,7 +20,7 @@ export class TemplateRegistry {
 	private baseResults = new Map<string, TemplateValidationResult>();
 	private refreshTail: Promise<void> = Promise.resolve();
 	private readonly parser: TemplateParser;
-	private readonly paths = new VaultPathService();
+	private readonly pathService = new VaultPathService();
 
 	constructor(
 		private readonly vault: Vault,
@@ -73,7 +73,7 @@ export class TemplateRegistry {
 	private normalizedFolder(): string | null {
 		let configuredFolder = this.getFolder();
 		try {
-			return this.paths.normalizeFolder(configuredFolder);
+			return this.pathService.normalizeFolder(configuredFolder);
 		} catch (error) {
 			this.baseResults.clear();
 			this.results = [
@@ -131,9 +131,15 @@ export class TemplateRegistry {
 
 	/** Returns all templates that parsed without errors. */
 	getAll(): TemplateDefinition[] {
-		return this.results.flatMap(result =>
-			result.template && !result.issues.some(issue => issue.severity === 'error') ? [result.template] : [],
-		);
+		let validTemplates: TemplateDefinition[] = [];
+		for (let result of this.results) {
+			if (!result.template) continue;
+			if (result.issues.some(issue => issue.severity === 'error')) continue;
+
+			validTemplates.push(result.template);
+		}
+
+		return validTemplates;
 	}
 
 	/** Looks up a template by its unique ID. */

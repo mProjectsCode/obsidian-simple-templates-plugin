@@ -5,34 +5,55 @@ import { VaultPathService } from 'packages/core/src/output/VaultPathService';
 
 /** Resolves rendered output configuration into a safe folder and filename. */
 export class OutputPathResolver {
-	constructor(private readonly paths = new VaultPathService()) {}
+	constructor(private readonly pathService = new VaultPathService()) {}
 
 	resolveFolder(
 		definition: OutputFolderDefinition | undefined,
 		provider: OutputFolderProvider,
 		renderedPath?: string,
 	): ResolvedOutputFolder {
-		let selected = definition ?? { mode: 'default' as const };
-		if (selected.mode === 'same-as-active-file') {
-			let folder = provider.getActiveFileFolder();
-			return folder === null
-				? { folder: this.paths.normalizeFolder(provider.getDefaultFolder()), usedFolderFallback: true }
-				: { folder: this.paths.normalizeFolder(folder), usedFolderFallback: false };
+		let folderDefinition = definition ?? { mode: 'default' as const };
+		if (folderDefinition.mode === 'same-as-active-file') {
+			let activeFileFolder = provider.getActiveFileFolder();
+
+			if (activeFileFolder === null) {
+				return {
+					folder: this.pathService.normalizeFolder(provider.getDefaultFolder()),
+					usedFolderFallback: true,
+				};
+			}
+
+			return { folder: this.pathService.normalizeFolder(activeFileFolder), usedFolderFallback: false };
 		}
-		let path = selected.mode === 'path' ? provider.getExplicitFolder(renderedPath ?? selected.path) : provider.getDefaultFolder();
-		return { folder: this.paths.normalizeFolder(path), usedFolderFallback: false };
+
+		let folder = provider.getDefaultFolder();
+		if (folderDefinition.mode === 'path') {
+			folder = provider.getExplicitFolder(renderedPath ?? folderDefinition.path);
+		}
+
+		return { folder: this.pathService.normalizeFolder(folder), usedFolderFallback: false };
 	}
 
 	resolveFilename(renderedTemplate: string): string {
-		let rendered = renderedTemplate.trim().replace(/\s+/g, ' ');
-		if (rendered.includes('/') || rendered.includes('\\'))
+		let normalizedFilename = renderedTemplate.trim().replace(/\s+/g, ' ');
+		if (normalizedFilename.includes('/') || normalizedFilename.includes('\\')) {
 			throw new TemplateValidationError('Output filename cannot contain path separators.');
-		let cleaned = [...rendered]
-			.map(character => (character.charCodeAt(0) < 32 || '<>:"|?*'.includes(character) ? '-' : character))
+		}
+
+		let cleanedFilename = [...normalizedFilename]
+			.map(character => {
+				let isUnsupported = character.charCodeAt(0) < 32 || '<>:"|?*'.includes(character);
+				return isUnsupported ? '-' : character;
+			})
 			.join('')
 			.replace(/[. ]+$/g, '')
 			.trim();
-		if (!cleaned) throw new TemplateValidationError('Output filename is empty.');
-		return /\.md$/i.test(cleaned) ? cleaned : `${cleaned}.md`;
+
+		if (!cleanedFilename) {
+			throw new TemplateValidationError('Output filename is empty.');
+		}
+
+		if (/\.md$/i.test(cleanedFilename)) return cleanedFilename;
+		return `${cleanedFilename}.md`;
 	}
 }

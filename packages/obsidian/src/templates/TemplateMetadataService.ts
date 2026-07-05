@@ -25,20 +25,31 @@ export class TemplateMetadataService {
 	}
 
 	createEditable(content: string): EditableTemplateMetadata {
-		let data = this.frontmatter.parse(content).data;
-		let identity = this.object(data.template);
-		let variables = Object.fromEntries(
-			Object.entries(this.object(data.variables)).map(([name, value]) => [name, this.normalizeVariable(value)]),
+		let metadata = this.frontmatter.parse(content).data;
+		let identityFields = this.object(metadata.template);
+		let templateIdentity: EditableTemplateMetadata['template'] = { id: '', name: '' };
+
+		if (typeof identityFields.id === 'string') {
+			templateIdentity.id = identityFields.id;
+		}
+		if (typeof identityFields.name === 'string') {
+			templateIdentity.name = identityFields.name;
+		}
+		if (typeof identityFields.description === 'string') {
+			templateIdentity.description = identityFields.description;
+		}
+		if (Array.isArray(identityFields.tags)) {
+			templateIdentity.tags = identityFields.tags.filter((tag): tag is string => typeof tag === 'string');
+		}
+
+		let variableDefinitions = Object.fromEntries(
+			Object.entries(this.object(metadata.variables)).map(([variableName, value]) => [variableName, this.normalizeVariable(value)]),
 		);
+
 		return {
-			template: {
-				id: typeof identity.id === 'string' ? identity.id : '',
-				name: typeof identity.name === 'string' ? identity.name : '',
-				...(typeof identity.description === 'string' ? { description: identity.description } : {}),
-				...(Array.isArray(identity.tags) ? { tags: identity.tags.filter((tag): tag is string => typeof tag === 'string') } : {}),
-			},
-			variables: structuredClone(variables),
-			output: structuredClone(this.object(data.output)),
+			template: templateIdentity,
+			variables: structuredClone(variableDefinitions),
+			output: structuredClone(this.object(metadata.output)),
 		};
 	}
 
@@ -64,36 +75,66 @@ export class TemplateMetadataService {
 	): ValidationIssue[] {
 		let issues = this.parser.parse(sourcePath, this.merge(content, state)).issues;
 		let duplicatePath = otherIds.get(state.template.id);
+
 		if (duplicatePath)
 			issues.push({ severity: 'error', path: 'template.id', message: `Template ID is already used by "${duplicatePath}".` });
+
 		return issues;
 	}
 
 	private normalizeVariable(value: unknown): VariableDefinition {
-		let definition = this.object(value);
-		let common = {
-			...(typeof definition.label === 'string' ? { label: definition.label } : {}),
-			...(typeof definition.description === 'string' ? { description: definition.description } : {}),
-		};
-		let type = VARIABLE_TYPES.includes(definition.type as VariableType) ? (definition.type as VariableType) : 'input';
-		if (type === 'special') return { ...common, type, source: typeof definition.source === 'string' ? definition.source : '' };
-		if (type === 'formula') return { ...common, type, formula: typeof definition.formula === 'string' ? definition.formula : '' };
-		let inputType = VARIABLE_INPUT_TYPES.includes(definition.inputType as VariableInputType)
-			? (definition.inputType as VariableInputType)
-			: 'text';
-		return {
-			...common,
-			type,
+		let fields = this.object(value);
+		let commonFields: Pick<VariableDefinition, 'label' | 'description'> = {};
+		if (typeof fields.label === 'string') {
+			commonFields.label = fields.label;
+		}
+		if (typeof fields.description === 'string') {
+			commonFields.description = fields.description;
+		}
+
+		let variableType: VariableType = 'input';
+		if (VARIABLE_TYPES.includes(fields.type as VariableType)) {
+			variableType = fields.type as VariableType;
+		}
+		if (variableType === 'special') {
+			let source = typeof fields.source === 'string' ? fields.source : '';
+
+			return { ...commonFields, type: variableType, source };
+		}
+
+		if (variableType === 'formula') {
+			let formula = typeof fields.formula === 'string' ? fields.formula : '';
+
+			return { ...commonFields, type: variableType, formula };
+		}
+
+		let inputType: VariableInputType = 'text';
+		if (VARIABLE_INPUT_TYPES.includes(fields.inputType as VariableInputType)) {
+			inputType = fields.inputType as VariableInputType;
+		}
+
+		let inputDefinition: Extract<VariableDefinition, { type: 'input' }> = {
+			...commonFields,
+			type: 'input',
 			inputType,
-			...(typeof definition.required === 'boolean' ? { required: definition.required } : {}),
-			...(definition.default !== undefined ? { default: structuredClone(definition.default) } : {}),
-			...(Array.isArray(definition.options)
-				? { options: definition.options.filter((option): option is string => typeof option === 'string') }
-				: {}),
 		};
+		if (typeof fields.required === 'boolean') {
+			inputDefinition.required = fields.required;
+		}
+
+		if (fields.default !== undefined) {
+			inputDefinition.default = structuredClone(fields.default);
+		}
+
+		if (Array.isArray(fields.options)) {
+			inputDefinition.options = fields.options.filter((option): option is string => typeof option === 'string');
+		}
+
+		return inputDefinition;
 	}
 
 	private object(value: unknown): Record<string, unknown> {
-		return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+		if (value === null || typeof value !== 'object' || Array.isArray(value)) return {};
+		return value as Record<string, unknown>;
 	}
 }

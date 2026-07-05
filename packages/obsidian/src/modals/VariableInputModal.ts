@@ -38,11 +38,13 @@ export class VariableInputModal extends Modal {
 		// source/formula variables would make them look user-provided and could
 		// override values resolved by the execution engine.
 		for (let name of this.inputNames) {
-			if (Object.hasOwn(initialValues, name)) this.values[name] = structuredClone(initialValues[name]);
-			else {
+			if (Object.hasOwn(initialValues, name)) {
+				this.values[name] = structuredClone(initialValues[name]);
+			} else {
 				let definition = definitions[name];
-				let defaultValue = definition?.type === 'input' ? definition.default : undefined;
-				if (defaultValue !== undefined) this.values[name] = structuredClone(defaultValue);
+				if (definition?.type === 'input' && definition.default !== undefined) {
+					this.values[name] = structuredClone(definition.default);
+				}
 			}
 		}
 	}
@@ -88,6 +90,7 @@ export class VariableInputModal extends Modal {
 	private addVariable(setting: Setting, name: string, definition: VariableDefinition): void {
 		setting.setName(definition.label ?? name).setDesc(definition.description ?? '');
 		if (definition.type !== 'input') return;
+
 		let current = this.values[name];
 
 		if (definition.inputType === 'boolean') {
@@ -99,27 +102,36 @@ export class VariableInputModal extends Modal {
 		} else if (definition.inputType === 'select') {
 			setting.addDropdown(dropdown => {
 				dropdown.addOption('', 'Choose…');
-				for (let option of definition.options ?? []) dropdown.addOption(option, option);
+				for (let option of definition.options ?? []) {
+					dropdown.addOption(option, option);
+				}
 				dropdown.setValue(this.displayValue(current)).onChange(value => {
 					this.values[name] = value;
 				});
 			});
 		} else if (['textarea', 'list', 'multiselect'].includes(definition.inputType)) {
+			let displayedValue = this.displayValue(current);
+			if (Array.isArray(current)) {
+				displayedValue = current.map(value => this.displayValue(value)).join('\n');
+			}
+
 			setting.addTextArea(textarea =>
 				textarea
 					.setPlaceholder(definition.inputType === 'textarea' ? '' : 'One value per line')
-					.setValue(
-						Array.isArray(current) ? current.map(value => this.displayValue(value)).join('\n') : this.displayValue(current),
-					)
+					.setValue(displayedValue)
 					.onChange(value => {
 						this.values[name] = value;
 					}),
 			);
 		} else {
 			setting.addText(text => {
-				if (definition.inputType === 'number') text.inputEl.type = 'number';
-				else if (definition.inputType === 'date') text.inputEl.type = 'date';
-				else if (definition.inputType === 'datetime') text.inputEl.type = 'datetime-local';
+				if (definition.inputType === 'number') {
+					text.inputEl.type = 'number';
+				} else if (definition.inputType === 'date') {
+					text.inputEl.type = 'date';
+				} else if (definition.inputType === 'datetime') {
+					text.inputEl.type = 'datetime-local';
+				}
 				text.setValue(this.displayValue(current)).onChange(value => {
 					this.values[name] = value;
 				});
@@ -132,8 +144,10 @@ export class VariableInputModal extends Modal {
 		let errors = this.inputNames.flatMap(name => {
 			let definition = this.definitions[name];
 			let value = this.values[name];
+
 			if (definition?.type !== 'input') return [];
 			if (definition.required && this.inputValues.isEmpty(value)) return [`${definition.label ?? name} is required.`];
+
 			try {
 				this.values[name] = this.inputValues.coerce(name, definition, value);
 				return [];

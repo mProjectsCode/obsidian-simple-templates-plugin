@@ -55,7 +55,10 @@ const TEXT_CHARACTER = P_HELPERS.notFollowedBy(P.string('{{')).then(P_UTILS.any(
 function expression(): Parser<string> {
 	return EXPRESSION_CHARACTER.many()
 		.map(characters => characters.join('').trim())
-		.chain(value => (value ? P.succeed(value) : P.fail('a non-empty Safe JS expression')));
+		.chain(value => {
+			if (value) return P.succeed(value);
+			return P.fail('a non-empty Safe JS expression');
+		});
 }
 
 function tagEnd(): Parser<string> {
@@ -169,34 +172,48 @@ export class TemplateProgramParser {
 	parse(source: string): TemplateProgram {
 		let result = LANGUAGE.program.tryParse(source);
 		if (!result.success) {
-			let expected = result.expected.length === 1 ? result.expected[0] : result.expected.join(', ');
+			let expected = result.expected.join(', ');
+			if (result.expected.length === 1) expected = result.expected[0];
+
 			throw new TemplateParseError(`Invalid template syntax at offset ${result.furthest}; expected ${expected}.`);
 		}
+
 		let references = new Set<string>();
 		this.collectReferences(result.value, new Set(), references);
+
 		return { type: 'program', nodes: result.value, references: [...references] };
 	}
 
 	private collectReferences(nodes: readonly TemplateNode[], locals: ReadonlySet<string>, references: Set<string>): void {
 		for (let node of nodes) {
 			if (node.type === 'text') continue;
+
 			if (node.type === 'if') {
 				for (let branch of node.branches) {
 					this.collectSimpleReference(branch.expression, locals, references);
 					this.collectReferences(branch.children, locals, references);
 				}
 				this.collectReferences(node.elseChildren, locals, references);
-			} else if (node.type === 'for') {
+				continue;
+			}
+
+			if (node.type === 'for') {
 				this.collectSimpleReference(node.expression, locals, references);
+
 				let loopLocals = new Set(locals).add(node.variable);
 				this.collectReferences(node.children, loopLocals, references);
 				this.collectReferences(node.emptyChildren, locals, references);
-			} else this.collectSimpleReference(node.expression, locals, references);
+				continue;
+			}
+
+			this.collectSimpleReference(node.expression, locals, references);
 		}
 	}
 
 	private collectSimpleReference(expressionSource: string, locals: ReadonlySet<string>, references: Set<string>): void {
 		let result = SIMPLE_PATH.tryParse(expressionSource);
-		if (result.success && !locals.has(result.value)) references.add(result.value);
+		if (result.success && !locals.has(result.value)) {
+			references.add(result.value);
+		}
 	}
 }

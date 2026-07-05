@@ -52,6 +52,8 @@ Follow Obsidian's **Developer Policies** and **Plugin Guidelines**. In particula
 - Prefer `function` over `const` lambdas
 - Prefer `interface` over `type`
 - Prefer classes over free floating functions (where it makes sense)
+- Prefer adding curly braces to `if` and loops
+- Prefer adding new lines between logical blocks within functions to aid readability
 
 ## Mobile
 

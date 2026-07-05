@@ -18,7 +18,7 @@ import { VariableResolver } from 'packages/core/src/variables/VariableResolver';
  * Returns everything needed to write the note to the vault.
  */
 export class TemplateEngine<Environment> {
-	private readonly variables: VariableResolver<Environment>;
+	private readonly variableResolver: VariableResolver<Environment>;
 	private readonly renderer: TemplateRenderer;
 
 	constructor(
@@ -26,35 +26,41 @@ export class TemplateEngine<Environment> {
 		expressions: ExpressionEvaluator,
 		private readonly outputFolders: OutputFolderProvider,
 		private readonly frontmatter = new FrontmatterService(),
-		private readonly paths = new OutputPathResolver(),
+		private readonly outputPathResolver = new OutputPathResolver(),
 		private readonly compiler = new TemplateCompiler(),
 	) {
-		this.variables = new VariableResolver(specialVariables, expressions);
+		this.variableResolver = new VariableResolver(specialVariables, expressions);
 		this.renderer = new TemplateRenderer(expressions);
 	}
 
 	async render(template: TemplateDefinition, environment: Environment, userValues: ResolvedVariables): Promise<RenderedNote> {
-		let values = await this.variables.resolve(template.variables, environment, userValues, template.sourcePath);
+		let values = await this.variableResolver.resolve(template.variables, environment, userValues, template.sourcePath);
 		let ast = template.ast ?? this.compiler.compile(template.body, template.outputFrontmatterTemplate, template.output);
 		let rendered = await this.renderer.renderAst(ast, values, template.sourcePath);
+
 		let outputFrontmatter = rendered.noteFrontmatter?.trim() ?? '';
 
 		// Validate the rendered frontmatter is parseable YAML
-		if (outputFrontmatter) this.frontmatter.parseYamlObject(outputFrontmatter);
+		if (outputFrontmatter) {
+			this.frontmatter.parseYamlObject(outputFrontmatter);
+		}
 
 		// Prepend frontmatter delimiters if an output frontmatter was produced
-		let content = outputFrontmatter ? `---\n${outputFrontmatter}\n---\n${rendered.body}` : rendered.body;
+		let content = rendered.body;
+		if (outputFrontmatter) {
+			content = `---\n${outputFrontmatter}\n---\n${rendered.body}`;
+		}
 
-		let { folder, usedFolderFallback } = this.paths.resolveFolder(template.output?.folder, this.outputFolders, rendered.folder);
+		let resolvedFolder = this.outputPathResolver.resolveFolder(template.output?.folder, this.outputFolders, rendered.folder);
 
 		return {
 			content,
-			folder,
-			filename: this.paths.resolveFilename(rendered.filename ?? template.name),
+			folder: resolvedFolder.folder,
+			filename: this.outputPathResolver.resolveFilename(rendered.filename ?? template.name),
 			conflict: template.output?.conflict ?? 'prompt',
 			openAfterCreate: template.output?.openAfterCreate ?? true,
 			values,
-			usedFolderFallback,
+			usedFolderFallback: resolvedFolder.usedFolderFallback,
 		};
 	}
 }

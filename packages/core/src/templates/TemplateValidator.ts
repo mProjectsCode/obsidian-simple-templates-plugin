@@ -21,17 +21,20 @@ export class TemplateValidator {
 		if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name))
 			issues.push({ severity: 'error', path: `variables.${name}`, message: `Variable key "${name}" is invalid.` });
 
-		let result = VariableDefinitionSchema.safeParse(definition);
-		if (!result.success) return [...issues, ...result.error.issues.flatMap(issue => this.variableZodIssue(name, definition, issue))];
-		if (result.data.type === 'special' && !this.specialVariables.has(result.data.source))
+		let validationResult = VariableDefinitionSchema.safeParse(definition);
+		if (!validationResult.success)
+			return [...issues, ...validationResult.error.issues.flatMap(issue => this.variableZodIssue(name, definition, issue))];
+
+		if (validationResult.data.type === 'special' && !this.specialVariables.has(validationResult.data.source))
 			issues.push({
 				severity: 'error',
 				path: `variables.${name}.source`,
 				message: `Special variable "${name}" requires a valid source.`,
 			});
-		if (result.data.type === 'input' && result.data.default !== undefined) {
+
+		if (validationResult.data.type === 'input' && validationResult.data.default !== undefined) {
 			try {
-				this.inputValues.coerce(name, result.data, result.data.default);
+				this.inputValues.coerce(name, validationResult.data, validationResult.data.default);
 			} catch (error) {
 				issues.push({
 					severity: 'error',
@@ -40,6 +43,7 @@ export class TemplateValidator {
 				});
 			}
 		}
+
 		return issues;
 	}
 
@@ -56,20 +60,26 @@ export class TemplateValidator {
 
 	/** Validates the shape of the raw frontmatter data. */
 	private validateMetadataShape(data: Record<string, unknown>): ValidationIssue[] {
-		let result = TemplateMetadataSchema.safeParse(data);
-		return result.success ? [] : result.error.issues.flatMap(issue => this.metadataZodIssue(data, issue));
+		let validationResult = TemplateMetadataSchema.safeParse(data);
+		if (validationResult.success) return [];
+		return validationResult.error.issues.flatMap(issue => this.metadataZodIssue(data, issue));
 	}
 
 	private variableZodIssue(name: string, definition: unknown, issue: z.core.$ZodIssue): ValidationIssue[] {
 		let path = `variables.${name}${issue.path.length ? `.${issue.path.map(String).join('.')}` : ''}`;
-		let fields = definition !== null && typeof definition === 'object' && !Array.isArray(definition) ? definition : null;
-		let type = fields ? String(Reflect.get(fields, 'type')) : '';
+		let fields: object | null = null;
+		if (definition !== null && typeof definition === 'object' && !Array.isArray(definition)) fields = definition;
+
+		let variableType = '';
+		if (fields) variableType = String(Reflect.get(fields, 'type'));
+
 		if (issue.code === 'unrecognized_keys')
 			return issue.keys.map(field => ({
 				severity: 'error',
 				path: `variables.${name}.${field}`,
-				message: `Variable "${name}" cannot define ${field} when its type is "${type}".`,
+				message: `Variable "${name}" cannot define ${field} when its type is "${variableType}".`,
 			}));
+
 		let field = String(issue.path[0] ?? '');
 		let message: string;
 		if (!fields) message = `Variable "${name}" must be a mapping.`;
@@ -85,16 +95,22 @@ export class TemplateValidator {
 		else if (field === 'required') message = `Variable "${name}" required must be true or false.`;
 		else if (field === 'label' || field === 'description') message = `Variable "${name}" ${field} must be a string.`;
 		else message = issue.message;
+
 		return [{ severity: 'error', path, message }];
 	}
 
 	private metadataZodIssue(data: Record<string, unknown>, issue: z.core.$ZodIssue): ValidationIssue[] {
-		let [section, name, ...variablePath] = issue.path.map(String);
-		if (section === 'variables' && name !== undefined) {
+		let issuePath = issue.path.map(String);
+		let section = issuePath[0];
+		let variableName = issuePath[1];
+
+		if (section === 'variables' && variableName !== undefined) {
 			let variables = data.variables;
-			let definition: unknown =
-				variables !== null && typeof variables === 'object' ? (variables as Record<string, unknown>)[name] : undefined;
-			return this.variableZodIssue(name, definition, { ...issue, path: variablePath });
+			let definition: unknown;
+			if (variables !== null && typeof variables === 'object') {
+				definition = (variables as Record<string, unknown>)[variableName];
+			}
+			return this.variableZodIssue(variableName, definition, { ...issue, path: issue.path.slice(2) });
 		}
 
 		let path = issue.path.map(String).join('.');
@@ -113,12 +129,14 @@ export class TemplateValidator {
 		else if (path === 'output.folder.mode') message = 'Output folder mode must be a string.';
 		else if (path === 'output.folder.path') message = 'Output folder path must be a string.';
 		else message = issue.message;
+
 		return [{ severity: 'error', path: path || undefined, message }];
 	}
 
 	/** Validates the `NoteOutputDefinition` sub-fields. */
 	private validateOutput(output: NoteOutputDefinition | undefined): ValidationIssue[] {
 		if (!output) return [];
+
 		let issues: ValidationIssue[] = [];
 		if (output.folder) {
 			if (!['default', 'same-as-active-file', 'path'].includes(output.folder.mode))
@@ -126,8 +144,10 @@ export class TemplateValidator {
 			if (output.folder.mode === 'path' && typeof output.folder.path !== 'string')
 				issues.push({ severity: 'error', path: 'output.folder.path', message: 'Explicit output folder requires a path.' });
 		}
+
 		if (output.conflict && !['prompt', 'append-number', 'cancel'].includes(output.conflict))
 			issues.push({ severity: 'error', path: 'output.conflict', message: 'Output conflict strategy is invalid.' });
+
 		return issues;
 	}
 
@@ -139,6 +159,7 @@ export class TemplateValidator {
 		if (!template.id) issues.push({ severity: 'error', path: 'template.id', message: 'Template ID is required.' });
 		else if (!/^[a-zA-Z0-9_-]+$/.test(template.id))
 			issues.push({ severity: 'error', path: 'template.id', message: `Template ID "${template.id}" is invalid.` });
+
 		if (!template.name) issues.push({ severity: 'error', path: 'template.name', message: 'Template name is required.' });
 
 		// Delegate to sub-validators
@@ -146,13 +167,20 @@ export class TemplateValidator {
 
 		// Simple variable paths can be checked statically. Safe JS expressions
 		// are intentionally deferred to the sandbox evaluator.
+		let filenameTemplate: string | TemplateProgram | undefined = template.ast?.filename;
+		if (filenameTemplate === undefined && typeof template.output?.filename === 'string') {
+			filenameTemplate = template.output.filename;
+		}
+		let folderTemplate: string | TemplateProgram | undefined;
+		if (template.output?.folder?.mode === 'path' && typeof template.output.folder.path === 'string') {
+			folderTemplate = template.ast?.folder ?? template.output.folder.path;
+		}
+
 		let references = this.findReferences(
 			template.ast?.body ?? template.body,
 			template.ast?.noteFrontmatter ?? template.outputFrontmatterTemplate,
-			template.ast?.filename ?? (typeof template.output?.filename === 'string' ? template.output.filename : undefined),
-			template.output?.folder?.mode === 'path' && typeof template.output.folder.path === 'string'
-				? (template.ast?.folder ?? template.output.folder.path)
-				: undefined,
+			filenameTemplate,
+			folderTemplate,
 		);
 		for (let reference of references)
 			if (!(reference in template.variables))
@@ -168,9 +196,14 @@ export class TemplateValidator {
 		let references = new Set<string>();
 		for (let template of templates) {
 			if (template === undefined) continue;
-			let program = typeof template === 'string' ? this.parser.parse(template) : template;
+
+			let program: TemplateProgram;
+			if (typeof template === 'string') program = this.parser.parse(template);
+			else program = template;
+
 			for (let reference of program.references) references.add(reference);
 		}
+
 		return references;
 	}
 

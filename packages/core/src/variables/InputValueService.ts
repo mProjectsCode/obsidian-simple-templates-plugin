@@ -5,6 +5,7 @@ import type { InputVariableDefinition } from 'packages/core/src/domain/Types';
 export class InputValueService {
 	coerce(name: string, definition: InputVariableDefinition, value: unknown): unknown {
 		if (value === undefined || value === null || value === '') return value;
+
 		switch (definition.inputType) {
 			case 'number': {
 				let number = typeof value === 'number' ? value : Number(value);
@@ -52,14 +53,21 @@ export class InputValueService {
 	}
 
 	private coerceList(name: string, definition: InputVariableDefinition, value: unknown): unknown[] {
-		let items = Array.isArray(value)
-			? value
-			: this.scalar(value, name)
-					.split(/\r?\n|,/)
-					.map(item => item.trim())
-					.filter(Boolean);
-		if (definition.inputType === 'multiselect' && items.some(item => !definition.options?.includes(this.scalar(item, name))))
+		let items: unknown[];
+		if (Array.isArray(value)) {
+			items = value;
+		} else {
+			items = this.scalar(value, name)
+				.split(/\r?\n|,/)
+				.map(item => item.trim())
+				.filter(Boolean);
+		}
+
+		let hasInvalidOption = items.some(item => !definition.options?.includes(this.scalar(item, name)));
+		if (definition.inputType === 'multiselect' && hasInvalidOption) {
 			throw new VariableResolutionError(`Variable "${name}" contains a value outside its configured options.`);
+		}
+
 		return items;
 	}
 
