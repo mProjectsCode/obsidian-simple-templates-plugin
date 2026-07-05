@@ -60,7 +60,9 @@ export class TemplateRenderer {
 				let matched = false;
 				for (let branch of node.branches) {
 					let value = await this.expressions.evaluateTemplateExpression(branch.expression, values, sourcePath);
-					if (!this.isTruthy(value)) continue;
+					if (!this.isTruthy(value)) {
+						continue;
+					}
 					await this.renderNodes(branch.children, values, sourcePath, output);
 					matched = true;
 					break;
@@ -88,24 +90,44 @@ export class TemplateRenderer {
 	}
 
 	private isTruthy(value: unknown): boolean {
-		if (value === null || value === undefined || value === false) return false;
-		if (typeof value === 'string' || Array.isArray(value)) return value.length > 0;
-		if (typeof value === 'number') return value !== 0 && !Number.isNaN(value);
-		if (typeof value === 'bigint') return value !== 0n;
+		if (value === null || value === undefined || value === false) {
+			return false;
+		}
+		if (typeof value === 'string' || Array.isArray(value)) {
+			return value.length > 0;
+		}
+		if (typeof value === 'number') {
+			return value !== 0 && !Number.isNaN(value);
+		}
+		if (typeof value === 'bigint') {
+			return value !== 0n;
+		}
 		return true;
 	}
 
 	private toItems(value: unknown): readonly unknown[] {
-		if (Array.isArray(value)) return value;
-		if (value === null || value === undefined || value === false || value === '') return [];
+		if (Array.isArray(value)) {
+			return value;
+		}
+		if (value === null || value === undefined || value === false || value === '') {
+			return [];
+		}
 		return [value];
 	}
 
 	private renderValue(value: unknown): string {
-		if (value === undefined || value === null) return '';
-		if (Array.isArray(value)) return value.map(item => this.renderValue(item)).join('\n');
-		if (typeof value === 'string') return value;
-		if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') return String(value);
+		if (value === undefined || value === null) {
+			return '';
+		}
+		if (Array.isArray(value)) {
+			return value.map(item => this.renderValue(item)).join('\n');
+		}
+		if (typeof value === 'string') {
+			return value;
+		}
+		if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+			return String(value);
+		}
 		try {
 			let serialized = JSON.stringify(value);
 			return serialized ?? '';

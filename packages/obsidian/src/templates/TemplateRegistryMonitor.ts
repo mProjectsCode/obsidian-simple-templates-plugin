@@ -1,4 +1,4 @@
-import { VaultPathService } from 'packages/core/src/index';
+import { VaultPathHelper } from 'packages/core/src/index';
 import { pathAffectsTemplateRegistry } from 'packages/obsidian/src/templates/RegistryPaths';
 import type { TemplateRegistry } from 'packages/obsidian/src/templates/TemplateRegistry';
 import type { Plugin, TAbstractFile } from 'obsidian';
@@ -6,7 +6,7 @@ import { TFile, debounce } from 'obsidian';
 
 /** Registers and filters vault events that can invalidate the template registry. */
 export class TemplateRegistryMonitor {
-	private readonly paths = new VaultPathService();
+	private readonly paths = new VaultPathHelper();
 
 	constructor(
 		private readonly plugin: Plugin,
@@ -32,12 +32,16 @@ export class TemplateRegistryMonitor {
 			pendingFiles.clear();
 		});
 		let scheduleFile = (file: TAbstractFile): void => {
-			if (!(file instanceof TFile) || !this.affectsRegistry(file)) return;
+			if (!(file instanceof TFile) || !this.affectsRegistry(file)) {
+				return;
+			}
 			pendingFiles.set(file.path, file);
 			refreshFiles();
 		};
 		let refreshAll = (file: TAbstractFile, oldPath?: string): void => {
-			if (!this.affectsRegistry(file, oldPath)) return;
+			if (!this.affectsRegistry(file, oldPath)) {
+				return;
+			}
 			void this.registry.refresh().catch(error => console.error('Simple Templates: registry refresh failed', error));
 		};
 		this.plugin.registerEvent(this.plugin.app.vault.on('create', scheduleFile));

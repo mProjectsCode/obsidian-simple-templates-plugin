@@ -24,6 +24,7 @@ export default defineConfig(globalIgnores(['**/*.test.ts']), ...obsidianmd.confi
 			'error',
 			{ argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_', destructuredArrayIgnorePattern: '^_', varsIgnorePattern: '^_' },
 		],
+		curly: ['error', 'all'],
 		'no-relative-import-paths/no-relative-import-paths': ['warn', { allowSameFolder: false }],
 	},
 });

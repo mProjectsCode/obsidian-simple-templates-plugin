@@ -37,8 +37,9 @@ export class NoteTemplateExecutor {
 	 * 1. Pick a template (if not pre-selected).
 	 * 2. Prompt the user for variable values.
 	 * 3. Render the note with an execution-scoped variable environment.
-	 * 4. Ensure and resolve the output path (handling conflicts).
-	 * 5. Write the file and optionally open it.
+	 * 4. Ensure the output folder exists.
+	 * 5. Resolve output-path conflicts.
+	 * 6. Write the file and optionally open it.
 	 */
 	async execute(template?: TemplateDefinition): Promise<void> {
 		try {
@@ -49,11 +50,15 @@ export class NoteTemplateExecutor {
 				return;
 			}
 			let selected = template ?? (await new TemplatePickerModal(this.dependencies.plugin.app, templates).choose());
-			if (!selected) return;
+			if (!selected) {
+				return;
+			}
 
 			// ---- Step 2: Prompt for user input ----
 			let userValues = await new VariableInputModal(this.dependencies.plugin.app, selected.variables).collect();
-			if (userValues === null) return;
+			if (userValues === null) {
+				return;
+			}
 
 			// ---- Step 3: Render ----
 			let engine = new TemplateEngine(
@@ -63,18 +68,26 @@ export class NoteTemplateExecutor {
 			);
 			let environment = new ObsidianVariableEnvironment(this.dependencies.plugin.app);
 			let rendered = await engine.render(selected, environment, userValues);
-			if (rendered.usedFolderFallback) new Notice('No active file was available; using the default output folder.');
+			if (rendered.usedFolderFallback) {
+				new Notice('No active file was available; using the default output folder.');
+			}
 
 			// ---- Step 4: Ensure output folder exists ----
-			if (!(await this.ensureFolder(rendered.folder))) return;
+			if (!(await this.ensureFolder(rendered.folder))) {
+				return;
+			}
 
 			// ---- Step 5: Resolve output path (handle conflicts) ----
 			let path = await this.destinations.resolve(rendered.folder, rendered.filename, rendered.conflict);
-			if (!path) return;
+			if (!path) {
+				return;
+			}
 
 			// ---- Step 6: Write file ----
 			let file = await this.dependencies.plugin.app.vault.create(path, rendered.content);
-			if (rendered.openAfterCreate) await this.dependencies.plugin.app.workspace.getLeaf(false).openFile(file);
+			if (rendered.openAfterCreate) {
+				await this.dependencies.plugin.app.workspace.getLeaf(false).openFile(file);
+			}
 
 			new Notice(`Created "${path}".`);
 		} catch (error) {
@@ -88,7 +101,9 @@ export class NoteTemplateExecutor {
 	 * the folder does not exist yet, then creates it (and any missing parents).
 	 */
 	private async ensureFolder(folder: string): Promise<boolean> {
-		if (!folder) return true;
+		if (!folder) {
+			return true;
+		}
 
 		let existing = this.dependencies.plugin.app.vault.getAbstractFileByPath(folder);
 		if (existing) {
@@ -102,7 +117,9 @@ export class NoteTemplateExecutor {
 			`The folder "${folder}" does not exist. Create it?`,
 			'Create folder',
 		).confirm();
-		if (!create) return false;
+		if (!create) {
+			return false;
+		}
 
 		await this.folders.ensureExists(folder);
 		return true;

@@ -1,4 +1,4 @@
-import { errorMessage, InputValueService, VariableResolver } from 'packages/core/src/index';
+import { errorMessage, InputValueHelper, VariableResolver } from 'packages/core/src/index';
 import type { ResolvedVariables, VariableDefinition } from 'packages/core/src/index';
 import type { App } from 'obsidian';
 import { SettingGroup } from 'obsidian';
@@ -15,13 +15,19 @@ export class VariableInputModal extends PromiseModal<ResolvedVariables | null> {
 	private readonly values: ResolvedVariables = {};
 	private readonly inputNames: string[];
 	private errorEl: HTMLElement | null = null;
-	private readonly inputValues = new InputValueService();
+	private readonly inputValues = new InputValueHelper();
 
 	/** Converts an arbitrary value to its display string in the input fields. */
 	private displayValue(value: unknown): string {
-		if (value === undefined || value === null) return '';
-		if (typeof value === 'string') return value;
-		if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') return value.toString();
+		if (value === undefined || value === null) {
+			return '';
+		}
+		if (typeof value === 'string') {
+			return value;
+		}
+		if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+			return value.toString();
+		}
 		return JSON.stringify(value);
 	}
 
@@ -54,7 +60,9 @@ export class VariableInputModal extends PromiseModal<ResolvedVariables | null> {
 	 * resolves immediately with an empty object.
 	 */
 	collect(): Promise<ResolvedVariables | null> {
-		if (this.inputNames.length === 0) return Promise.resolve({});
+		if (this.inputNames.length === 0) {
+			return Promise.resolve({});
+		}
 		return this.awaitResult();
 	}
 
@@ -81,7 +89,9 @@ export class VariableInputModal extends PromiseModal<ResolvedVariables | null> {
 	 *  its type. */
 	private addVariable(setting: Setting, name: string, definition: VariableDefinition): void {
 		setting.setName(definition.label ?? name).setDesc(definition.description ?? '');
-		if (definition.type !== 'input') return;
+		if (definition.type !== 'input') {
+			return;
+		}
 
 		let current = this.values[name];
 
@@ -137,8 +147,12 @@ export class VariableInputModal extends PromiseModal<ResolvedVariables | null> {
 			let definition = this.definitions[name];
 			let value = this.values[name];
 
-			if (definition?.type !== 'input') return [];
-			if (definition.required && this.inputValues.isEmpty(value)) return [`${definition.label ?? name} is required.`];
+			if (definition?.type !== 'input') {
+				return [];
+			}
+			if (definition.required && this.inputValues.isEmpty(value)) {
+				return [`${definition.label ?? name} is required.`];
+			}
 
 			try {
 				this.values[name] = this.inputValues.coerce(name, definition, value);

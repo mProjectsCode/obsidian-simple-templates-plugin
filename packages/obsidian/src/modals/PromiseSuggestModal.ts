@@ -32,7 +32,9 @@ export abstract class PromiseSuggestModal<Item> extends FuzzySuggestModal<Item> 
 	}
 
 	private settle(result: Item | null): void {
-		if (this.settled) return;
+		if (this.settled) {
+			return;
+		}
 
 		this.settled = true;
 		this.resolve(result);

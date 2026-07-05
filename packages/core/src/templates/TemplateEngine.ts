@@ -1,6 +1,6 @@
 import type { RenderedNote, ResolvedVariables, TemplateDefinition } from 'packages/core/src/domain/Types';
 import type { ExpressionEvaluator } from 'packages/core/src/expressions/ExpressionEvaluator';
-import { FrontmatterService } from 'packages/core/src/frontmatter/FrontmatterService';
+import { FrontmatterHelper } from 'packages/core/src/frontmatter/FrontmatterHelper';
 import type { OutputFolderProvider } from 'packages/core/src/output/OutputFolderProvider';
 import { OutputPathResolver } from 'packages/core/src/output/OutputPathResolver';
 import { TemplateCompiler } from 'packages/core/src/templates/TemplateCompiler';
@@ -25,7 +25,7 @@ export class TemplateEngine<Environment> {
 		specialVariables: SpecialVariableRegistry<Environment>,
 		expressions: ExpressionEvaluator,
 		private readonly outputFolders: OutputFolderProvider,
-		private readonly frontmatter = new FrontmatterService(),
+		private readonly frontmatter = new FrontmatterHelper(),
 		private readonly outputPathResolver = new OutputPathResolver(),
 		private readonly compiler = new TemplateCompiler(),
 	) {

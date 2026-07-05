@@ -1,4 +1,4 @@
-import { asRecord, VaultPathService } from 'packages/core/src/index';
+import { asRecord, VaultPathHelper } from 'packages/core/src/index';
 
 export interface PluginSettings {
 	templateFolderPath: string;
@@ -12,7 +12,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	showContextMenuItems: true,
 };
 
-const PATHS = new VaultPathService();
+const PATHS = new VaultPathHelper();
 
 /** Deserialises raw plugin data, falling back to defaults for missing keys. */
 export function loadPluginSettings(value: unknown): PluginSettings {
@@ -31,7 +31,9 @@ export function loadPluginSettings(value: unknown): PluginSettings {
 }
 
 function loadFolder(value: unknown, fallback: string): string {
-	if (typeof value !== 'string') return fallback;
+	if (typeof value !== 'string') {
+		return fallback;
+	}
 	try {
 		return PATHS.normalizeFolder(value);
 	} catch {

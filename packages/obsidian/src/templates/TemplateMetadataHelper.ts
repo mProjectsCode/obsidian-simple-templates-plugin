@@ -1,4 +1,4 @@
-import { asRecord, FrontmatterService, TemplateParser, VARIABLE_INPUT_TYPES, VARIABLE_TYPES } from 'packages/core/src/index';
+import { asRecord, FrontmatterHelper, TemplateParser, VARIABLE_INPUT_TYPES, VARIABLE_TYPES } from 'packages/core/src/index';
 import type {
 	NoteOutputDefinition,
 	SpecialVariableCatalog,
@@ -15,9 +15,9 @@ export interface EditableTemplateMetadata {
 	output: NoteOutputDefinition;
 }
 
-/** Converts, validates, and persists the plugin-owned template metadata fields. */
-export class TemplateMetadataService {
-	private readonly frontmatter = new FrontmatterService();
+/** Converts and validates the plugin-owned template metadata fields. */
+export class TemplateMetadataHelper {
+	private readonly frontmatter = new FrontmatterHelper();
 	private readonly parser: TemplateParser;
 
 	constructor(specialVariables: SpecialVariableCatalog) {
@@ -74,8 +74,9 @@ export class TemplateMetadataService {
 		let issues = this.parser.parse(sourcePath, this.merge(content, state)).issues;
 		let duplicatePath = otherIds.get(state.template.id);
 
-		if (duplicatePath)
+		if (duplicatePath) {
 			issues.push({ severity: 'error', path: 'template.id', message: `Template ID is already used by "${duplicatePath}".` });
+		}
 
 		return issues;
 	}

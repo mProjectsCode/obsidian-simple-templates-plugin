@@ -1,13 +1,13 @@
-import { errorMessage, FrontmatterService } from 'packages/core/src/index';
+import { errorMessage, FrontmatterHelper } from 'packages/core/src/index';
 import type { ValidationIssue } from 'packages/core/src/index';
+import { ConfirmModal } from 'packages/obsidian/src/modals/ConfirmModal';
+import { addModalActions } from 'packages/obsidian/src/modals/ModalActions';
 import { TemplateMetadataForm } from 'packages/obsidian/src/modals/TemplateMetadataForm';
-import { TemplateMetadataService } from 'packages/obsidian/src/templates/TemplateMetadataService';
-import type { EditableTemplateMetadata } from 'packages/obsidian/src/templates/TemplateMetadataService';
+import type { ObsidianSpecialVariableRegistry } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
+import { TemplateMetadataHelper } from 'packages/obsidian/src/templates/TemplateMetadataHelper';
+import type { EditableTemplateMetadata } from 'packages/obsidian/src/templates/TemplateMetadataHelper';
 import type { App, TFile } from 'obsidian';
 import { Modal, Notice, SettingGroup } from 'obsidian';
-import { ConfirmModal } from 'packages/obsidian/src/modals/ConfirmModal';
-import type { ObsidianSpecialVariableRegistry } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
-import { addModalActions } from 'packages/obsidian/src/modals/ModalActions';
 
 /**
  * Modal for editing a template's frontmatter metadata (identity, variables,
@@ -17,8 +17,8 @@ export class TemplateMetadataEditorModal extends Modal {
 	private state: EditableTemplateMetadata;
 	private previewEl: HTMLElement | null = null;
 	private validationEl: HTMLElement | null = null;
-	private readonly frontmatter = new FrontmatterService();
-	private readonly metadata: TemplateMetadataService;
+	private readonly frontmatter = new FrontmatterHelper();
+	private readonly metadata: TemplateMetadataHelper;
 	private readonly form: TemplateMetadataForm;
 
 	constructor(
@@ -32,7 +32,7 @@ export class TemplateMetadataEditorModal extends Modal {
 	) {
 		super(app);
 		this.modalEl.addClass('simple-templates-modal');
-		this.metadata = new TemplateMetadataService(specialVariables);
+		this.metadata = new TemplateMetadataHelper(specialVariables);
 		this.state = this.metadata.createEditable(originalContent);
 		this.form = new TemplateMetadataForm(app, this.state, specialVariables, {
 			render: () => this.render(),

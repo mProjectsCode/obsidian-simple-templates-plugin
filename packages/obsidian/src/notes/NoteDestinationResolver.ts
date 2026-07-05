@@ -1,18 +1,22 @@
-import { FileConflictError, VaultPathService } from 'packages/core/src/index';
+import { FileConflictError, VaultPathHelper } from 'packages/core/src/index';
 import type { FileConflictStrategy } from 'packages/core/src/index';
 import { ConfirmModal } from 'packages/obsidian/src/modals/ConfirmModal';
 import type { App } from 'obsidian';
 
 /** Resolves an available vault path, including user-driven conflict handling. */
 export class NoteDestinationResolver {
-	private readonly paths = new VaultPathService();
+	private readonly paths = new VaultPathHelper();
 
 	constructor(private readonly app: App) {}
 
 	async resolve(folder: string, filename: string, strategy: FileConflictStrategy): Promise<string | null> {
 		let desiredPath = this.paths.join(folder, filename);
-		if (!this.exists(desiredPath)) return desiredPath;
-		if (strategy === 'cancel') throw new FileConflictError(`A note already exists at "${desiredPath}".`);
+		if (!this.exists(desiredPath)) {
+			return desiredPath;
+		}
+		if (strategy === 'cancel') {
+			throw new FileConflictError(`A note already exists at "${desiredPath}".`);
+		}
 
 		if (strategy === 'prompt') {
 			let append = await new ConfirmModal(
@@ -21,7 +25,9 @@ export class NoteDestinationResolver {
 				`A note already exists at “${desiredPath}”. Create a numbered note instead?`,
 				'Append number',
 			).confirm();
-			if (!append) return null;
+			if (!append) {
+				return null;
+			}
 		}
 
 		return this.findAvailableNumberedPath(desiredPath);
@@ -33,7 +39,9 @@ export class NoteDestinationResolver {
 		let extension = desiredPath.slice(extensionIndex);
 		for (let index = 1; index < Number.MAX_SAFE_INTEGER; index += 1) {
 			let candidate = `${stem} ${index}${extension}`;
-			if (!this.exists(candidate)) return candidate;
+			if (!this.exists(candidate)) {
+				return candidate;
+			}
 		}
 		throw new FileConflictError(`Could not find an available filename for "${desiredPath}".`);
 	}

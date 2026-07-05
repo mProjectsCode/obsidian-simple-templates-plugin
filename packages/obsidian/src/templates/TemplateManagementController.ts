@@ -1,4 +1,4 @@
-import { errorMessage, FrontmatterService, VaultPathService } from 'packages/core/src/index';
+import { errorMessage, FrontmatterHelper, VaultPathHelper } from 'packages/core/src/index';
 import { ConfirmModal } from 'packages/obsidian/src/modals/ConfirmModal';
 import { FilePickerModal } from 'packages/obsidian/src/modals/FilePickerModal';
 import { TemplateCreationModal } from 'packages/obsidian/src/modals/TemplateCreationModal';
@@ -20,8 +20,8 @@ export interface TemplateManagementDependencies {
 
 /** Coordinates template metadata selection, validation, and editing. */
 export class TemplateManagementController {
-	private readonly frontmatter = new FrontmatterService();
-	private readonly paths = new VaultPathService();
+	private readonly frontmatter = new FrontmatterHelper();
+	private readonly paths = new VaultPathHelper();
 	private readonly folders: VaultFolderService;
 
 	constructor(private readonly dependencies: TemplateManagementDependencies) {
@@ -30,7 +30,9 @@ export class TemplateManagementController {
 
 	async create(): Promise<void> {
 		let request = await new TemplateCreationModal(this.dependencies.app).collect();
-		if (!request) return;
+		if (!request) {
+			return;
+		}
 
 		try {
 			await this.dependencies.registry.refresh();
@@ -74,7 +76,9 @@ export class TemplateManagementController {
 	async pick(): Promise<void> {
 		let validPaths = new Set(this.dependencies.registry.getAll().map(template => template.sourcePath));
 		let file = await new FilePickerModal(this.dependencies.app, this.dependencies.registry.getMarkdownFiles(), validPaths).choose();
-		if (file) await this.openEditor(file);
+		if (file) {
+			await this.openEditor(file);
+		}
 	}
 
 	showValidationSummary(): void {
@@ -108,7 +112,9 @@ export class TemplateManagementController {
 				`${errorMessage(error)} Open the file for manual repair?`,
 				'Open file',
 			).confirm();
-			if (open) await this.dependencies.app.workspace.getLeaf(false).openFile(file);
+			if (open) {
+				await this.dependencies.app.workspace.getLeaf(false).openFile(file);
+			}
 			return;
 		}
 

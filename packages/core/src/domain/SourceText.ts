@@ -13,8 +13,12 @@ export function readSourceLine(source: string, start: number): SourceLine {
 	}
 
 	let end = contentEnd;
-	if (source[end] === '\r') end += 1;
-	if (source[end] === '\n') end += 1;
+	if (source[end] === '\r') {
+		end += 1;
+	}
+	if (source[end] === '\n') {
+		end += 1;
+	}
 
 	return { start, contentEnd, end, text: source.slice(start, contentEnd) };
 }
@@ -32,8 +36,12 @@ export function readSourceLines(source: string): SourceLine[] {
 }
 
 export function withoutTrailingLineBreak(value: string): string {
-	if (value.endsWith('\r\n')) return value.slice(0, -2);
-	if (value.endsWith('\r') || value.endsWith('\n')) return value.slice(0, -1);
+	if (value.endsWith('\r\n')) {
+		return value.slice(0, -2);
+	}
+	if (value.endsWith('\r') || value.endsWith('\n')) {
+		return value.slice(0, -1);
+	}
 
 	return value;
 }

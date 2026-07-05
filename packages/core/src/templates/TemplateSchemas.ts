@@ -18,10 +18,12 @@ const InputVariableSchema = z
 	})
 	.superRefine((definition, context) => {
 		let usesOptions = inputTypeUsesOptions(definition.inputType);
-		if (usesOptions && (!definition.options || definition.options.length === 0))
+		if (usesOptions && (!definition.options || definition.options.length === 0)) {
 			context.addIssue({ code: 'custom', path: ['options'], message: 'requires-options' });
-		if (!usesOptions && definition.options !== undefined)
+		}
+		if (!usesOptions && definition.options !== undefined) {
 			context.addIssue({ code: 'custom', path: ['options'], message: 'options-not-allowed' });
+		}
 	});
 
 const SpecialVariableSchema = z.strictObject({

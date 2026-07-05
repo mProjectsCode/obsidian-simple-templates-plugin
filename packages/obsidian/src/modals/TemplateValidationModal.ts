@@ -20,13 +20,14 @@ export class TemplateValidationModal extends Modal {
 			group.addSetting(setting => {
 				setting.setName(result.path).setDesc(errors.map(issue => issue.message).join(' '));
 				let file = this.app.vault.getAbstractFileByPath(result.path);
-				if (file instanceof TFile)
+				if (file instanceof TFile) {
 					setting.addButton(button =>
 						button.setButtonText('Open').onClick(async () => {
 							await this.app.workspace.getLeaf(false).openFile(file);
 							this.close();
 						}),
 					);
+				}
 			});
 		}
 	}

@@ -1,5 +1,5 @@
 import {
-	FrontmatterService,
+	FrontmatterHelper,
 	inputTypeUsesOptions,
 	isValidVariableName,
 	splitAndTrim,
@@ -8,11 +8,11 @@ import {
 	VARIABLE_TYPES,
 } from 'packages/core/src/index';
 import type { VariableDefinition, VariableInputType, VariableType } from 'packages/core/src/index';
+import { addModalActions } from 'packages/obsidian/src/modals/ModalActions';
 import type { ObsidianSpecialVariableRegistry } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
 import type { App } from 'obsidian';
 import { Modal, SettingGroup } from 'obsidian';
 import { parse } from 'yaml';
-import { addModalActions } from 'packages/obsidian/src/modals/ModalActions';
 
 /** Edits one template variable in isolation and commits it when saved. */
 export class VariableEditorModal extends Modal {
@@ -21,7 +21,7 @@ export class VariableEditorModal extends Modal {
 	private readonly drafts = new Map<VariableType, VariableDefinition>();
 	private detailsEl: HTMLElement | null = null;
 	private errorEl: HTMLElement | null = null;
-	private readonly frontmatter = new FrontmatterService();
+	private readonly frontmatter = new FrontmatterHelper();
 
 	constructor(
 		app: App,
@@ -100,14 +100,18 @@ export class VariableEditorModal extends Modal {
 				.setName('Type')
 				.setDesc('Choose whether the value is entered, supplied by Obsidian, or calculated.')
 				.addDropdown(dropdown => {
-					for (let type of VARIABLE_TYPES) dropdown.addOption(type, this.typeLabel(type));
+					for (let type of VARIABLE_TYPES) {
+						dropdown.addOption(type, this.typeLabel(type));
+					}
 					dropdown.setValue(this.definition.type).onChange(value => this.changeType(value as VariableType));
 				});
 		});
 	}
 
 	private renderDetails(): void {
-		if (!this.detailsEl) return;
+		if (!this.detailsEl) {
+			return;
+		}
 
 		this.detailsEl.empty();
 		let group = new SettingGroup(this.detailsEl).setHeading(this.typeLabel(this.definition.type));
@@ -146,8 +150,11 @@ export class VariableEditorModal extends Modal {
 				.setDesc('Prevent note creation until the user enters a value.')
 				.addToggle(toggle =>
 					toggle.setValue(definition.required ?? false).onChange(value => {
-						if (value) definition.required = true;
-						else delete definition.required;
+						if (value) {
+							definition.required = true;
+						} else {
+							delete definition.required;
+						}
 					}),
 				);
 		});
@@ -158,8 +165,9 @@ export class VariableEditorModal extends Modal {
 				.setDesc('Optional YAML value used when no value is entered.')
 				.addText(text =>
 					text.setValue(this.serializeDefault(definition.default)).onChange(value => {
-						if (!value.trim()) delete definition.default;
-						else {
+						if (!value.trim()) {
+							delete definition.default;
+						} else {
 							try {
 								definition.default = parse(value) as unknown;
 							} catch {
@@ -178,8 +186,11 @@ export class VariableEditorModal extends Modal {
 					.addTextArea(textarea =>
 						textarea.setValue(definition.options?.join('\n') ?? '').onChange(value => {
 							let options = splitAndTrim(value, /\r?\n/);
-							if (options.length) definition.options = options;
-							else delete definition.options;
+							if (options.length) {
+								definition.options = options;
+							} else {
+								delete definition.options;
+							}
 						}),
 					);
 			});
@@ -217,13 +228,19 @@ export class VariableEditorModal extends Modal {
 	}
 
 	private changeType(type: VariableType): void {
-		if (type === this.definition.type) return;
+		if (type === this.definition.type) {
+			return;
+		}
 
 		this.drafts.set(this.definition.type, this.definition);
 
 		let common: Pick<VariableDefinition, 'label' | 'description'> = {};
-		if (this.definition.label) common.label = this.definition.label;
-		if (this.definition.description) common.description = this.definition.description;
+		if (this.definition.label) {
+			common.label = this.definition.label;
+		}
+		if (this.definition.description) {
+			common.description = this.definition.description;
+		}
 
 		let draft = this.drafts.get(type);
 		if (draft) {
@@ -242,12 +259,17 @@ export class VariableEditorModal extends Modal {
 	}
 
 	private setCommonField(field: 'label' | 'description', value: string): void {
-		if (value) this.definition[field] = value;
-		else delete this.definition[field];
+		if (value) {
+			this.definition[field] = value;
+		} else {
+			delete this.definition[field];
+		}
 	}
 
 	private serializeDefault(value: unknown): string {
-		if (value === undefined) return '';
+		if (value === undefined) {
+			return '';
+		}
 
 		return this.frontmatter
 			.serialize({ value })

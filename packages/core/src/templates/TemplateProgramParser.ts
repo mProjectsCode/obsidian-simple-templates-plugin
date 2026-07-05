@@ -56,7 +56,9 @@ function expression(): Parser<string> {
 	return EXPRESSION_CHARACTER.many()
 		.map(characters => characters.join('').trim())
 		.chain(value => {
-			if (value) return P.succeed(value);
+			if (value) {
+				return P.succeed(value);
+			}
 			return P.fail('a non-empty Safe JS expression');
 		});
 }
@@ -173,7 +175,9 @@ export class TemplateProgramParser {
 		let result = LANGUAGE.program.tryParse(source);
 		if (!result.success) {
 			let expected = result.expected.join(', ');
-			if (result.expected.length === 1) expected = result.expected[0];
+			if (result.expected.length === 1) {
+				expected = result.expected[0];
+			}
 
 			throw new TemplateParseError(`Invalid template syntax at offset ${result.furthest}; expected ${expected}.`);
 		}
@@ -186,7 +190,9 @@ export class TemplateProgramParser {
 
 	private collectReferences(nodes: readonly TemplateNode[], locals: ReadonlySet<string>, references: Set<string>): void {
 		for (let node of nodes) {
-			if (node.type === 'text') continue;
+			if (node.type === 'text') {
+				continue;
+			}
 
 			if (node.type === 'if') {
 				for (let branch of node.branches) {

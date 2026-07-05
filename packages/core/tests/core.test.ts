@@ -2,14 +2,14 @@ import { describe, expect, test } from 'bun:test';
 import {
 	ExpressionEvaluator,
 	FormulaError,
-	FrontmatterService,
+	FrontmatterHelper,
 	MissingRequiredVariableError,
 	TemplateEngine,
 	TemplateParser,
 	TemplateProgramParser,
 	TemplateRenderer,
 	TemplateValidationError,
-	VaultPathService,
+	VaultPathHelper,
 	VariableResolutionError,
 	VariableResolver,
 	SpecialVariableRegistry,
@@ -43,7 +43,7 @@ const SPECIAL_VARIABLES = new SpecialVariableRegistry<TestVariableEnvironment>()
 	});
 const TEMPLATE_PARSER = new TemplateParser(SPECIAL_VARIABLES);
 const PROGRAM_PARSER = new TemplateProgramParser();
-const FRONTMATTER = new FrontmatterService();
+const FRONTMATTER = new FrontmatterHelper();
 
 class MockOutputFolderProvider implements OutputFolderProvider {
 	constructor(
@@ -105,7 +105,7 @@ class MockExpressionEvaluator extends ExpressionEvaluator {
 
 const EXPRESSIONS = new MockExpressionEvaluator();
 const TEMPLATE_RENDERER = new TemplateRenderer(EXPRESSIONS, PROGRAM_PARSER);
-const VAULT_PATHS = new VaultPathService();
+const VAULT_PATHS = new VaultPathHelper();
 
 async function rejected(promise: Promise<unknown>): Promise<Error> {
 	try {

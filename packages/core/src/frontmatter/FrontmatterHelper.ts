@@ -19,12 +19,13 @@ export interface TemplateFrontmatterFields {
 
 const TEMPLATE_FRONTMATTER_KEYS = ['template', 'variables', 'output'] as const;
 
-/** Owns Markdown frontmatter parsing, serialization, and template metadata updates. */
-export class FrontmatterService {
+/** Provides Markdown frontmatter parsing, serialization, and template metadata updates. */
+export class FrontmatterHelper {
 	parse(content: string): FrontmatterDocument {
 		let opening = readSourceLine(content, 0);
-		if (opening.end === opening.contentEnd || !this.isDelimiterLine(content, 0, opening))
+		if (opening.end === opening.contentEnd || !this.isDelimiterLine(content, 0, opening)) {
 			return { raw: null, data: {}, body: content, hasFrontmatter: false };
+		}
 
 		let closingStart = opening.end;
 		let closing: SourceLine | null = null;
@@ -36,7 +37,9 @@ export class FrontmatterService {
 			}
 			closingStart = candidate.end;
 		}
-		if (!closing) return { raw: null, data: {}, body: content, hasFrontmatter: false };
+		if (!closing) {
+			return { raw: null, data: {}, body: content, hasFrontmatter: false };
+		}
 
 		let raw = content.slice(opening.end, closingStart);
 		try {
@@ -66,24 +69,36 @@ export class FrontmatterService {
 			this.applyTemplateFields(frontmatter, known);
 			yaml = this.serialize(frontmatter);
 		}
-		if (document.hasFrontmatter) return `---\n${yaml}\n---\n${document.body}`;
-		if (!yaml) throw new FrontmatterEditError('Cannot insert empty frontmatter.');
+		if (document.hasFrontmatter) {
+			return `---\n${yaml}\n---\n${document.body}`;
+		}
+		if (!yaml) {
+			throw new FrontmatterEditError('Cannot insert empty frontmatter.');
+		}
 		return `---\n${yaml}\n---\n${content}`;
 	}
 
 	applyTemplateFields(frontmatter: Record<string, unknown>, known: TemplateFrontmatterFields): void {
 		for (let key of TEMPLATE_FRONTMATTER_KEYS) {
-			if (known[key] === undefined) delete frontmatter[key];
-			else frontmatter[key] = structuredClone(known[key]);
+			if (known[key] === undefined) {
+				delete frontmatter[key];
+			} else {
+				frontmatter[key] = structuredClone(known[key]);
+			}
 		}
 	}
 
 	private mergeYamlDocument(raw: string, known: TemplateFrontmatterFields): string {
 		let document = parseDocument(raw);
-		if (document.errors.length > 0) throw new FrontmatterEditError(`Cannot edit YAML frontmatter: ${document.errors[0]?.message}`);
+		if (document.errors.length > 0) {
+			throw new FrontmatterEditError(`Cannot edit YAML frontmatter: ${document.errors[0]?.message}`);
+		}
 		for (let key of TEMPLATE_FRONTMATTER_KEYS) {
-			if (known[key] === undefined) document.delete(key);
-			else document.set(key, structuredClone(known[key]));
+			if (known[key] === undefined) {
+				document.delete(key);
+			} else {
+				document.set(key, structuredClone(known[key]));
+			}
 		}
 		return document.toString({ lineWidth: 0 }).trimEnd();
 	}
@@ -98,15 +113,22 @@ export class FrontmatterService {
 	}
 
 	private isDelimiterLine(content: string, start: number, boundary: SourceLine): boolean {
-		if (content.slice(start, start + 3) !== '---') return false;
-		for (let index = start + 3; index < boundary.contentEnd; index += 1)
-			if (content[index] !== ' ' && content[index] !== '\t') return false;
+		if (content.slice(start, start + 3) !== '---') {
+			return false;
+		}
+		for (let index = start + 3; index < boundary.contentEnd; index += 1) {
+			if (content[index] !== ' ' && content[index] !== '\t') {
+				return false;
+			}
+		}
 		return true;
 	}
 
 	private asObject(value: unknown): Record<string, unknown> {
 		let record = asRecord(value);
-		if (!record) throw new TemplateParseError('YAML frontmatter must contain a mapping.');
+		if (!record) {
+			throw new TemplateParseError('YAML frontmatter must contain a mapping.');
+		}
 
 		return record;
 	}

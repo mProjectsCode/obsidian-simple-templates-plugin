@@ -1,4 +1,4 @@
-import { errorMessage, TemplateParser, VaultPathService } from 'packages/core/src/index';
+import { errorMessage, TemplateParser, VaultPathHelper } from 'packages/core/src/index';
 import type { SpecialVariableCatalog, TemplateDefinition, ValidationIssue } from 'packages/core/src/index';
 import { TFile } from 'obsidian';
 import type { Vault } from 'obsidian';
@@ -12,7 +12,7 @@ export interface TemplateValidationResult {
 
 /**
  * Manages the in-memory cache of all parsed templates within the configured
- * template folder.  Supports deduplication error detection and provides a
+ * template folder. Supports deduplication error detection and provides a
  * simple query API.
  */
 export class TemplateRegistry {
@@ -20,7 +20,7 @@ export class TemplateRegistry {
 	private baseResults = new Map<string, TemplateValidationResult>();
 	private refreshTail: Promise<void> = Promise.resolve();
 	private readonly parser: TemplateParser;
-	private readonly pathService = new VaultPathService();
+	private readonly paths = new VaultPathHelper();
 
 	constructor(
 		private readonly vault: Vault,
@@ -35,17 +35,21 @@ export class TemplateRegistry {
 	 * serially.
 	 */
 	refresh(): Promise<void> {
-		let queuedRefresh = this.enqueue(() => this.refreshNow());
-		return queuedRefresh;
+		return this.enqueue(() => this.refreshNow());
 	}
 
 	/** Re-parses one changed Markdown file without rescanning the folder. */
 	refreshFile(file: TFile): Promise<void> {
 		return this.enqueue(async () => {
 			let folder = this.normalizedFolder();
-			if (folder === null) return;
-			if (!this.pathService.isInFolder(file.path, folder)) this.baseResults.delete(file.path);
-			else this.baseResults.set(file.path, await this.parseFile(file));
+			if (folder === null) {
+				return;
+			}
+			if (!this.paths.isInFolder(file.path, folder)) {
+				this.baseResults.delete(file.path);
+			} else {
+				this.baseResults.set(file.path, await this.parseFile(file));
+			}
 			this.publishResults();
 		});
 	}
@@ -59,9 +63,11 @@ export class TemplateRegistry {
 	/** Parses every Markdown file in the template folder and runs validation. */
 	private async refreshNow(): Promise<void> {
 		let folder = this.normalizedFolder();
-		if (folder === null) return;
+		if (folder === null) {
+			return;
+		}
 
-		let files = this.vault.getMarkdownFiles().filter(file => this.pathService.isInFolder(file.path, folder));
+		let files = this.vault.getMarkdownFiles().filter(file => this.paths.isInFolder(file.path, folder));
 
 		let parsed = await Promise.all(files.map(file => this.parseFile(file)));
 		this.baseResults = new Map(parsed.map(result => [result.path, result]));
@@ -71,7 +77,7 @@ export class TemplateRegistry {
 	private normalizedFolder(): string | null {
 		let configuredFolder = this.getFolder();
 		try {
-			return this.pathService.normalizeFolder(configuredFolder);
+			return this.paths.normalizeFolder(configuredFolder);
 		} catch (error) {
 			this.baseResults.clear();
 			this.results = [
@@ -112,14 +118,18 @@ export class TemplateRegistry {
 	private addDuplicateIdIssues(): void {
 		let byId = new Map<string, TemplateValidationResult[]>();
 		for (let result of this.results) {
-			if (!result.template?.id) continue;
+			if (!result.template?.id) {
+				continue;
+			}
 			let group = byId.get(result.template.id) ?? [];
 			group.push(result);
 			byId.set(result.template.id, group);
 		}
 
 		for (let [id, duplicates] of byId) {
-			if (duplicates.length < 2) continue;
+			if (duplicates.length < 2) {
+				continue;
+			}
 			let paths = duplicates.map(result => result.path).join(', ');
 			for (let duplicate of duplicates) {
 				duplicate.issues.push({ severity: 'error', message: `Template ID "${id}" is duplicated in: ${paths}.` });
@@ -131,8 +141,12 @@ export class TemplateRegistry {
 	getAll(): TemplateDefinition[] {
 		let validTemplates: TemplateDefinition[] = [];
 		for (let result of this.results) {
-			if (!result.template) continue;
-			if (result.issues.some(issue => issue.severity === 'error')) continue;
+			if (!result.template) {
+				continue;
+			}
+			if (result.issues.some(issue => issue.severity === 'error')) {
+				continue;
+			}
 
 			validTemplates.push(result.template);
 		}

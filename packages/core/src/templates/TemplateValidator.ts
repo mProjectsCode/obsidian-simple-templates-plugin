@@ -1,40 +1,56 @@
+import type { z } from 'zod';
+import { errorMessage } from 'packages/core/src/domain/Errors';
+import type { TemplateProgram } from 'packages/core/src/domain/TemplateAst';
+import { isValidTemplateId, isValidVariableName } from 'packages/core/src/domain/TemplateNaming';
 import { FILE_CONFLICT_STRATEGIES, OUTPUT_FOLDER_MODES } from 'packages/core/src/domain/Types';
 import type { NoteOutputDefinition, TemplateDefinition, ValidationIssue, VariableDefinition } from 'packages/core/src/domain/Types';
-import { isValidTemplateId, isValidVariableName } from 'packages/core/src/domain/TemplateNaming';
-import type { TemplateProgram } from 'packages/core/src/domain/TemplateAst';
+import { asRecord } from 'packages/core/src/domain/UnknownValue';
 import { TemplateProgramParser } from 'packages/core/src/templates/TemplateProgramParser';
 import { TemplateMetadataSchema, VariableDefinitionSchema } from 'packages/core/src/templates/TemplateSchemas';
+import { InputValueHelper } from 'packages/core/src/variables/InputValueHelper';
 import type { SpecialVariableCatalog } from 'packages/core/src/variables/SpecialVariableRegistry';
-import type { z } from 'zod';
-import { InputValueService } from 'packages/core/src/variables/InputValueService';
-import { errorMessage } from 'packages/core/src/domain/Errors';
-import { asRecord } from 'packages/core/src/domain/UnknownValue';
 
 /** Validates raw metadata and compiled template definitions with shared dependencies. */
 export class TemplateValidator {
-	private readonly inputValues = new InputValueService();
+	private readonly inputValues = new InputValueHelper();
+
 	constructor(
 		private readonly specialVariables: SpecialVariableCatalog,
 		private readonly parser = new TemplateProgramParser(),
 	) {}
 
+	validateMetadata(data: Record<string, unknown>): ValidationIssue[] {
+		return this.validateMetadataShape(data);
+	}
+
+	validateVariables(variables: Record<string, VariableDefinition>): ValidationIssue[] {
+		return this.validateVariableDefinitions(variables);
+	}
+
+	validate(template: TemplateDefinition): ValidationIssue[] {
+		return this.validateTemplateDefinition(template);
+	}
+
 	/** Validates a variable's Zod shape and host-dependent source. */
 	private validateVariableDefinition(name: string, definition: unknown): ValidationIssue[] {
 		let issues: ValidationIssue[] = [];
 
-		if (!isValidVariableName(name))
+		if (!isValidVariableName(name)) {
 			issues.push({ severity: 'error', path: `variables.${name}`, message: `Variable key "${name}" is invalid.` });
+		}
 
 		let validationResult = VariableDefinitionSchema.safeParse(definition);
-		if (!validationResult.success)
+		if (!validationResult.success) {
 			return [...issues, ...validationResult.error.issues.flatMap(issue => this.variableZodIssue(name, definition, issue))];
+		}
 
-		if (validationResult.data.type === 'special' && !this.specialVariables.has(validationResult.data.source))
+		if (validationResult.data.type === 'special' && !this.specialVariables.has(validationResult.data.source)) {
 			issues.push({
 				severity: 'error',
 				path: `variables.${name}.source`,
 				message: `Special variable "${name}" requires a valid source.`,
 			});
+		}
 
 		if (validationResult.data.type === 'input' && validationResult.data.default !== undefined) {
 			try {
@@ -65,7 +81,9 @@ export class TemplateValidator {
 	/** Validates the shape of the raw frontmatter data. */
 	private validateMetadataShape(data: Record<string, unknown>): ValidationIssue[] {
 		let validationResult = TemplateMetadataSchema.safeParse(data);
-		if (validationResult.success) return [];
+		if (validationResult.success) {
+			return [];
+		}
 		return validationResult.error.issues.flatMap(issue => this.metadataZodIssue(data, issue));
 	}
 
@@ -74,30 +92,45 @@ export class TemplateValidator {
 		let fields = asRecord(definition);
 
 		let variableType = '';
-		if (fields) variableType = String(Reflect.get(fields, 'type'));
+		if (fields) {
+			variableType = String(Reflect.get(fields, 'type'));
+		}
 
-		if (issue.code === 'unrecognized_keys')
+		if (issue.code === 'unrecognized_keys') {
 			return issue.keys.map(field => ({
 				severity: 'error',
 				path: `variables.${name}.${field}`,
 				message: `Variable "${name}" cannot define ${field} when its type is "${variableType}".`,
 			}));
+		}
 
 		let field = String(issue.path[0] ?? '');
 		let message: string;
-		if (!fields) message = `Variable "${name}" must be a mapping.`;
-		else if (field === 'type') message = `Variable "${name}" has an invalid type.`;
-		else if (field === 'inputType') message = `Input variable "${name}" has an invalid input type.`;
-		else if (field === 'options' && issue.message === 'requires-options') message = `Variable "${name}" requires at least one option.`;
-		else if (field === 'options' && issue.message === 'options-not-allowed')
+		if (!fields) {
+			message = `Variable "${name}" must be a mapping.`;
+		} else if (field === 'type') {
+			message = `Variable "${name}" has an invalid type.`;
+		} else if (field === 'inputType') {
+			message = `Input variable "${name}" has an invalid input type.`;
+		} else if (field === 'options' && issue.message === 'requires-options') {
+			message = `Variable "${name}" requires at least one option.`;
+		} else if (field === 'options' && issue.message === 'options-not-allowed') {
 			message = 'Only select and multiselect variables can define options.';
-		else if (field === 'options') message = `Variable "${name}" options must be a list of strings.`;
-		else if (field === 'source') message = `Special variable "${name}" requires a valid source.`;
-		else if (field === 'formula' && issue.code === 'invalid_type') message = `Variable "${name}" formula must be a string.`;
-		else if (field === 'formula') message = `Formula variable "${name}" requires an expression.`;
-		else if (field === 'required') message = `Variable "${name}" required must be true or false.`;
-		else if (field === 'label' || field === 'description') message = `Variable "${name}" ${field} must be a string.`;
-		else message = issue.message;
+		} else if (field === 'options') {
+			message = `Variable "${name}" options must be a list of strings.`;
+		} else if (field === 'source') {
+			message = `Special variable "${name}" requires a valid source.`;
+		} else if (field === 'formula' && issue.code === 'invalid_type') {
+			message = `Variable "${name}" formula must be a string.`;
+		} else if (field === 'formula') {
+			message = `Formula variable "${name}" requires an expression.`;
+		} else if (field === 'required') {
+			message = `Variable "${name}" required must be true or false.`;
+		} else if (field === 'label' || field === 'description') {
+			message = `Variable "${name}" ${field} must be a string.`;
+		} else {
+			message = issue.message;
+		}
 
 		return [{ severity: 'error', path, message }];
 	}
@@ -119,38 +152,58 @@ export class TemplateValidator {
 
 		let path = issue.path.map(String).join('.');
 		let message: string;
-		if (path === 'template') message = 'Template metadata must be a mapping.';
-		else if (path === 'template.id') message = 'Template ID must be a string.';
-		else if (path === 'template.name') message = 'Template name must be a string.';
-		else if (path === 'template.description') message = 'Template description must be a string.';
-		else if (path.startsWith('template.tags')) message = 'Template tags must be a list of strings.';
-		else if (path === 'variables') message = 'Variables must be a mapping.';
-		else if (path === 'output') message = 'Output must be a mapping.';
-		else if (path === 'output.filename') message = 'Output filename must be a string.';
-		else if (path === 'output.conflict') message = 'Output conflict strategy must be a string.';
-		else if (path === 'output.openAfterCreate') message = 'Open after create must be true or false.';
-		else if (path === 'output.folder') message = 'Output folder must be an object with a mode.';
-		else if (path === 'output.folder.mode') message = 'Output folder mode must be a string.';
-		else if (path === 'output.folder.path') message = 'Output folder path must be a string.';
-		else message = issue.message;
+		if (path === 'template') {
+			message = 'Template metadata must be a mapping.';
+		} else if (path === 'template.id') {
+			message = 'Template ID must be a string.';
+		} else if (path === 'template.name') {
+			message = 'Template name must be a string.';
+		} else if (path === 'template.description') {
+			message = 'Template description must be a string.';
+		} else if (path.startsWith('template.tags')) {
+			message = 'Template tags must be a list of strings.';
+		} else if (path === 'variables') {
+			message = 'Variables must be a mapping.';
+		} else if (path === 'output') {
+			message = 'Output must be a mapping.';
+		} else if (path === 'output.filename') {
+			message = 'Output filename must be a string.';
+		} else if (path === 'output.conflict') {
+			message = 'Output conflict strategy must be a string.';
+		} else if (path === 'output.openAfterCreate') {
+			message = 'Open after create must be true or false.';
+		} else if (path === 'output.folder') {
+			message = 'Output folder must be an object with a mode.';
+		} else if (path === 'output.folder.mode') {
+			message = 'Output folder mode must be a string.';
+		} else if (path === 'output.folder.path') {
+			message = 'Output folder path must be a string.';
+		} else {
+			message = issue.message;
+		}
 
 		return [{ severity: 'error', path: path || undefined, message }];
 	}
 
 	/** Validates the `NoteOutputDefinition` sub-fields. */
 	private validateOutput(output: NoteOutputDefinition | undefined): ValidationIssue[] {
-		if (!output) return [];
+		if (!output) {
+			return [];
+		}
 
 		let issues: ValidationIssue[] = [];
 		if (output.folder) {
-			if (!OUTPUT_FOLDER_MODES.includes(output.folder.mode))
+			if (!OUTPUT_FOLDER_MODES.includes(output.folder.mode)) {
 				issues.push({ severity: 'error', path: 'output.folder.mode', message: 'Output folder mode is invalid.' });
-			if (output.folder.mode === 'path' && typeof output.folder.path !== 'string')
+			}
+			if (output.folder.mode === 'path' && typeof output.folder.path !== 'string') {
 				issues.push({ severity: 'error', path: 'output.folder.path', message: 'Explicit output folder requires a path.' });
+			}
 		}
 
-		if (output.conflict && !FILE_CONFLICT_STRATEGIES.includes(output.conflict))
+		if (output.conflict && !FILE_CONFLICT_STRATEGIES.includes(output.conflict)) {
 			issues.push({ severity: 'error', path: 'output.conflict', message: 'Output conflict strategy is invalid.' });
+		}
 
 		return issues;
 	}
@@ -160,11 +213,15 @@ export class TemplateValidator {
 		let issues: ValidationIssue[] = [];
 
 		// ID and name are mandatory
-		if (!template.id) issues.push({ severity: 'error', path: 'template.id', message: 'Template ID is required.' });
-		else if (!isValidTemplateId(template.id))
+		if (!template.id) {
+			issues.push({ severity: 'error', path: 'template.id', message: 'Template ID is required.' });
+		} else if (!isValidTemplateId(template.id)) {
 			issues.push({ severity: 'error', path: 'template.id', message: `Template ID "${template.id}" is invalid.` });
+		}
 
-		if (!template.name) issues.push({ severity: 'error', path: 'template.name', message: 'Template name is required.' });
+		if (!template.name) {
+			issues.push({ severity: 'error', path: 'template.name', message: 'Template name is required.' });
+		}
 
 		// Delegate to sub-validators
 		issues.push(...this.validateVariableDefinitions(template.variables), ...this.validateOutput(template.output));
@@ -186,12 +243,14 @@ export class TemplateValidator {
 			filenameTemplate,
 			folderTemplate,
 		);
-		for (let reference of references)
-			if (!(reference in template.variables))
+		for (let reference of references) {
+			if (!(reference in template.variables)) {
 				issues.push({
 					severity: 'error',
 					message: `Template "${template.name || template.sourcePath}" references variable "${reference}", but it is not declared.`,
 				});
+			}
+		}
 
 		return issues;
 	}
@@ -199,27 +258,22 @@ export class TemplateValidator {
 	private findReferences(...templates: (string | TemplateProgram | undefined)[]): Set<string> {
 		let references = new Set<string>();
 		for (let template of templates) {
-			if (template === undefined) continue;
+			if (template === undefined) {
+				continue;
+			}
 
 			let program: TemplateProgram;
-			if (typeof template === 'string') program = this.parser.parse(template);
-			else program = template;
+			if (typeof template === 'string') {
+				program = this.parser.parse(template);
+			} else {
+				program = template;
+			}
 
-			for (let reference of program.references) references.add(reference);
+			for (let reference of program.references) {
+				references.add(reference);
+			}
 		}
 
 		return references;
-	}
-
-	validateMetadata(data: Record<string, unknown>): ValidationIssue[] {
-		return this.validateMetadataShape(data);
-	}
-
-	validateVariables(variables: Record<string, VariableDefinition>): ValidationIssue[] {
-		return this.validateVariableDefinitions(variables);
-	}
-
-	validate(template: TemplateDefinition): ValidationIssue[] {
-		return this.validateTemplateDefinition(template);
 	}
 }

@@ -2,7 +2,7 @@ import { FILE_CONFLICT_STRATEGIES, OUTPUT_FOLDER_MODES, splitAndTrim } from 'pac
 import type { FileConflictStrategy, OutputFolderMode, VariableDefinition } from 'packages/core/src/index';
 import { VariableEditorModal } from 'packages/obsidian/src/modals/VariableEditorModal';
 import type { ObsidianSpecialVariableRegistry } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
-import type { EditableTemplateMetadata } from 'packages/obsidian/src/templates/TemplateMetadataService';
+import type { EditableTemplateMetadata } from 'packages/obsidian/src/templates/TemplateMetadataHelper';
 import type { App } from 'obsidian';
 import { SettingGroup } from 'obsidian';
 
@@ -52,8 +52,11 @@ export class TemplateMetadataForm {
 		group.addSetting(setting => {
 			setting.setName('Description').addText(text =>
 				text.setValue(this.state.template.description ?? '').onChange(value => {
-					if (value) this.state.template.description = value;
-					else delete this.state.template.description;
+					if (value) {
+						this.state.template.description = value;
+					} else {
+						delete this.state.template.description;
+					}
 					this.callbacks.updatePreview();
 				}),
 			);
@@ -65,8 +68,11 @@ export class TemplateMetadataForm {
 				.addText(text =>
 					text.setValue(this.state.template.tags?.join(', ') ?? '').onChange(value => {
 						let tags = splitAndTrim(value, ',');
-						if (tags.length) this.state.template.tags = tags;
-						else delete this.state.template.tags;
+						if (tags.length) {
+							this.state.template.tags = tags;
+						} else {
+							delete this.state.template.tags;
+						}
 						this.callbacks.updatePreview();
 					}),
 				);
@@ -167,8 +173,11 @@ export class TemplateMetadataForm {
 		group.addSetting(setting => {
 			setting.setName('Filename template').addText(text =>
 				text.setValue(this.state.output.filename ?? '').onChange(value => {
-					if (value) this.state.output.filename = value;
-					else delete this.state.output.filename;
+					if (value) {
+						this.state.output.filename = value;
+					} else {
+						delete this.state.output.filename;
+					}
 					this.callbacks.updatePreview();
 				}),
 			);
@@ -207,7 +216,9 @@ export class TemplateMetadataForm {
 				let variableEntries = Object.entries(this.state.variables);
 				let variableIndex = variableEntries.findIndex(entry => entry[0] === name);
 
-				if (variableIndex === -1) return;
+				if (variableIndex === -1) {
+					return;
+				}
 
 				variableEntries[variableIndex] = [updatedName, updatedDefinition];
 				this.state.variables = Object.fromEntries(variableEntries);
@@ -219,7 +230,9 @@ export class TemplateMetadataForm {
 
 	private openNewVariableEditor(): void {
 		let index = 1;
-		while (`variable${index}` in this.state.variables) index += 1;
+		while (`variable${index}` in this.state.variables) {
+			index += 1;
+		}
 
 		new VariableEditorModal(
 			this.app,
@@ -239,7 +252,9 @@ export class TemplateMetadataForm {
 		let variableEntries = Object.entries(this.state.variables);
 		let variableEntry = variableEntries.splice(fromIndex, 1)[0];
 
-		if (!variableEntry) return;
+		if (!variableEntry) {
+			return;
+		}
 
 		variableEntries.splice(toIndex, 0, variableEntry);
 		this.state.variables = Object.fromEntries(variableEntries);

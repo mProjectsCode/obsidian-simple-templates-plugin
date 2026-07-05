@@ -12,7 +12,9 @@ export class SimpleTemplatesSettingsTab extends PluginSettingTab {
 
 	override async setControlValue(key: string, value: unknown): Promise<void> {
 		await super.setControlValue(key, value);
-		if (key === 'templateFolderPath') await this.plugin.registry.refresh();
+		if (key === 'templateFolderPath') {
+			await this.plugin.registry.refresh();
+		}
 	}
 
 	override getSettingDefinitions(): SettingDefinitionItem[] {

@@ -14,7 +14,9 @@ export class SpecialVariableRegistry<Environment> implements SpecialVariableCata
 	private readonly definitions = new Map<string, SpecialVariableDefinition<Environment>>();
 
 	register(source: string, definition: SpecialVariableDefinition<Environment>): this {
-		if (this.definitions.has(source)) throw new Error(`Special variable source "${source}" is already registered.`);
+		if (this.definitions.has(source)) {
+			throw new Error(`Special variable source "${source}" is already registered.`);
+		}
 		this.definitions.set(source, definition);
 		return this;
 	}
@@ -37,7 +39,9 @@ export class SpecialVariableRegistry<Environment> implements SpecialVariableCata
 
 	resolve(source: string, environment: Environment): unknown {
 		let definition = this.definitions.get(source);
-		if (!definition) throw new Error(`Special variable source "${source}" is not registered.`);
+		if (!definition) {
+			throw new Error(`Special variable source "${source}" is not registered.`);
+		}
 		return definition.resolve(environment);
 	}
 }

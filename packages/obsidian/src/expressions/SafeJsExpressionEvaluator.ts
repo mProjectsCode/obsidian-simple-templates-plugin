@@ -12,7 +12,9 @@ export class SafeJsExpressionEvaluator extends ExpressionEvaluator {
 
 	override async evaluate(source: string, values: ResolvedVariables, sourcePath?: string): Promise<JsonValue> {
 		let api = this.api ?? this.getApi();
-		if (!api) throw new FormulaError('Safe JS must be installed and enabled to evaluate this expression.');
+		if (!api) {
+			throw new FormulaError('Safe JS must be installed and enabled to evaluate this expression.');
+		}
 
 		this.api = api;
 
@@ -20,11 +22,15 @@ export class SafeJsExpressionEvaluator extends ExpressionEvaluator {
 			inputs: this.toInputs(values),
 			permissions: [],
 		};
-		if (sourcePath) executionOptions.source = { path: sourcePath };
+		if (sourcePath) {
+			executionOptions.source = { path: sourcePath };
+		}
 
 		let result = await api.executeExpression(source, executionOptions);
 
-		if (result.status !== 'success') throw new FormulaError(`Safe JS expression failed: ${result.message}`);
+		if (result.status !== 'success') {
+			throw new FormulaError(`Safe JS expression failed: ${result.message}`);
+		}
 		return result.value;
 	}
 
@@ -38,10 +44,18 @@ export class SafeJsExpressionEvaluator extends ExpressionEvaluator {
 	}
 
 	private toJsonValue(name: string, value: unknown): JsonValue {
-		if (value === undefined) return null;
-		if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
-		if (typeof value === 'number' && Number.isFinite(value)) return value;
-		if (Array.isArray(value)) return value.map(item => this.toJsonValue(name, item));
+		if (value === undefined) {
+			return null;
+		}
+		if (value === null || typeof value === 'string' || typeof value === 'boolean') {
+			return value;
+		}
+		if (typeof value === 'number' && Number.isFinite(value)) {
+			return value;
+		}
+		if (Array.isArray(value)) {
+			return value.map(item => this.toJsonValue(name, item));
+		}
 		if (typeof value === 'object') {
 			let prototype = Reflect.getPrototypeOf(value);
 

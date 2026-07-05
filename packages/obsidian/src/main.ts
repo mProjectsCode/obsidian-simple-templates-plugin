@@ -82,7 +82,9 @@ export default class SimpleTemplatesPlugin extends Plugin {
 	private registerContextMenu(): void {
 		this.registerEvent(
 			this.app.workspace.on('editor-menu', menu => {
-				if (!this.settings.showContextMenuItems) return;
+				if (!this.settings.showContextMenuItems) {
+					return;
+				}
 				menu.addItem(item =>
 					item
 						.setTitle('Create note from template')

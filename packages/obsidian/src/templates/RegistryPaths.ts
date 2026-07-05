@@ -1,6 +1,6 @@
-import { VaultPathService } from 'packages/core/src/index';
+import { VaultPathHelper } from 'packages/core/src/index';
 
-const PATHS = new VaultPathService();
+const PATHS = new VaultPathHelper();
 
 /**
  * Determines whether a set of vault paths could affect the template registry.

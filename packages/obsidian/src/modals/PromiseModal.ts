@@ -33,7 +33,9 @@ export abstract class PromiseModal<Result> extends Modal {
 	}
 
 	private settle(result: Result): void {
-		if (this.settled) return;
+		if (this.settled) {
+			return;
+		}
 
 		this.settled = true;
 		this.resolve(result);

@@ -1,10 +1,10 @@
+import { errorMessage } from 'packages/core/src/index';
+import { addModalActions } from 'packages/obsidian/src/modals/ModalActions';
+import { PromiseModal } from 'packages/obsidian/src/modals/PromiseModal';
+import { TemplateCreationHelper } from 'packages/obsidian/src/templates/TemplateCreationHelper';
+import type { TemplateCreationRequest } from 'packages/obsidian/src/templates/TemplateCreationHelper';
 import type { App } from 'obsidian';
 import { SettingGroup } from 'obsidian';
-import { addModalActions } from 'packages/obsidian/src/modals/ModalActions';
-import { errorMessage } from 'packages/core/src/index';
-import { PromiseModal } from 'packages/obsidian/src/modals/PromiseModal';
-import { TemplateCreationService } from 'packages/obsidian/src/templates/TemplateCreationService';
-import type { TemplateCreationRequest } from 'packages/obsidian/src/templates/TemplateCreationService';
 
 /** Collects the identity and filename for a new template file. */
 export class TemplateCreationModal extends PromiseModal<TemplateCreationRequest | null> {
@@ -14,7 +14,7 @@ export class TemplateCreationModal extends PromiseModal<TemplateCreationRequest 
 	private idEdited = false;
 	private filenameEdited = false;
 	private errorEl: HTMLElement | null = null;
-	private readonly creation = new TemplateCreationService();
+	private readonly creation = new TemplateCreationHelper();
 
 	constructor(app: App) {
 		super(app, null);

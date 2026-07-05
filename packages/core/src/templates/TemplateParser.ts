@@ -9,7 +9,7 @@ import type {
 	ValidationIssue,
 	VariableDefinition,
 } from 'packages/core/src/domain/Types';
-import { FrontmatterService } from 'packages/core/src/frontmatter/FrontmatterService';
+import { FrontmatterHelper } from 'packages/core/src/frontmatter/FrontmatterHelper';
 import { TemplateCompiler } from 'packages/core/src/templates/TemplateCompiler';
 import { TemplateValidator } from 'packages/core/src/templates/TemplateValidator';
 import type { SpecialVariableCatalog } from 'packages/core/src/variables/SpecialVariableRegistry';
@@ -26,7 +26,7 @@ export class TemplateParser {
 
 	constructor(
 		specialVariables: SpecialVariableCatalog,
-		private readonly frontmatter = new FrontmatterService(),
+		private readonly frontmatter = new FrontmatterHelper(),
 		private readonly compiler = new TemplateCompiler(),
 		validator?: TemplateValidator,
 	) {
@@ -55,8 +55,12 @@ export class TemplateParser {
 				parsedFrontmatter: parsedDocument.data,
 				ast: this.compiler.compile(extractedFrontmatter.body, outputFrontmatterTemplate, outputDefinition ?? undefined),
 			};
-			if (outputDefinition) template.output = outputDefinition;
-			if (outputFrontmatterTemplate !== undefined) template.outputFrontmatterTemplate = outputFrontmatterTemplate;
+			if (outputDefinition) {
+				template.output = outputDefinition;
+			}
+			if (outputFrontmatterTemplate !== undefined) {
+				template.outputFrontmatterTemplate = outputFrontmatterTemplate;
+			}
 
 			let metadataIssues = this.validator.validateMetadata(parsedDocument.data);
 			let templateIssues = this.validator.validate(template);
@@ -79,7 +83,9 @@ export class TemplateParser {
 		let seen = new Set<string>();
 		return issues.filter(issue => {
 			let key = `${issue.severity}\0${issue.path ?? ''}\0${issue.message}`;
-			if (seen.has(key)) return false;
+			if (seen.has(key)) {
+				return false;
+			}
 			seen.add(key);
 			return true;
 		});
@@ -91,23 +97,31 @@ export class TemplateParser {
 		let removals: { start: number; end: number }[] = [];
 		for (let index = 0; index < lines.length; index += 1) {
 			let line = lines[index];
-			if (!line) continue;
+			if (!line) {
+				continue;
+			}
 
 			let fence = this.openingFence(line.text);
-			if (!fence) continue;
+			if (!fence) {
+				continue;
+			}
 
 			let closingIndex = index + 1;
 			while (closingIndex < lines.length && !this.closesFence(lines[closingIndex]?.text ?? '', fence)) {
 				closingIndex += 1;
 			}
 			if (closingIndex >= lines.length) {
-				if (fence.info === 'note-frontmatter') throw new TemplateParseError('The note-frontmatter block is not closed.');
+				if (fence.info === 'note-frontmatter') {
+					throw new TemplateParseError('The note-frontmatter block is not closed.');
+				}
 				break;
 			}
 
 			if (fence.info === 'note-frontmatter') {
 				let closing = lines[closingIndex];
-				if (!closing) break;
+				if (!closing) {
+					break;
+				}
 				blocks.push(withoutTrailingLineBreak(source.slice(line.end, closing.start)));
 				removals.push({ start: line.start, end: closing.end });
 			}
@@ -115,7 +129,9 @@ export class TemplateParser {
 			index = closingIndex;
 		}
 
-		if (removals.length === 0) return { body: source, blocks };
+		if (removals.length === 0) {
+			return { body: source, blocks };
+		}
 
 		let body = source;
 		// Remove later ranges first so earlier source offsets remain valid.
@@ -136,14 +152,18 @@ export class TemplateParser {
 		}
 
 		let character = line[index];
-		if (character !== '`' && character !== '~') return null;
+		if (character !== '`' && character !== '~') {
+			return null;
+		}
 
 		let markerStart = index;
 		while (line[index] === character) {
 			index += 1;
 		}
 
-		if (index - markerStart < 3) return null;
+		if (index - markerStart < 3) {
+			return null;
+		}
 		return { character, length: index - markerStart, info: line.slice(index).trim() };
 	}
 
@@ -158,10 +178,14 @@ export class TemplateParser {
 			index += 1;
 		}
 
-		if (index - markerStart < fence.length) return false;
+		if (index - markerStart < fence.length) {
+			return false;
+		}
 
 		for (; index < line.length; index += 1) {
-			if (line[index] !== ' ' && line[index] !== '\t') return false;
+			if (line[index] !== ' ' && line[index] !== '\t') {
+				return false;
+			}
 		}
 
 		return true;
@@ -174,10 +198,18 @@ export class TemplateParser {
 	private readIdentity(value: unknown): TemplateIdentity {
 		let fields = this.asObject(value) ?? {};
 		let identity: TemplateIdentity = { id: '', name: '' };
-		if (typeof fields.id === 'string') identity.id = fields.id;
-		if (typeof fields.name === 'string') identity.name = fields.name;
-		if (typeof fields.description === 'string') identity.description = fields.description;
-		if (Array.isArray(fields.tags) && fields.tags.every(tag => typeof tag === 'string')) identity.tags = fields.tags;
+		if (typeof fields.id === 'string') {
+			identity.id = fields.id;
+		}
+		if (typeof fields.name === 'string') {
+			identity.name = fields.name;
+		}
+		if (typeof fields.description === 'string') {
+			identity.description = fields.description;
+		}
+		if (Array.isArray(fields.tags) && fields.tags.every(tag => typeof tag === 'string')) {
+			identity.tags = fields.tags;
+		}
 		return identity;
 	}
 }

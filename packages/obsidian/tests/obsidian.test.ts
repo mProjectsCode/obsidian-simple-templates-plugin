@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { MockTFile, MockTFolder } from 'packages/obsidian/tests/ObsidianMock';
 import { FileConflictError, FormulaError } from 'packages/core/src/index';
 import { SafeJsExpressionEvaluator } from 'packages/obsidian/src/expressions/SafeJsExpressionEvaluator';
-import { TemplateMetadataService } from 'packages/obsidian/src/templates/TemplateMetadataService';
+import { TemplateMetadataHelper } from 'packages/obsidian/src/templates/TemplateMetadataHelper';
 import { FilePickerModal } from 'packages/obsidian/src/modals/FilePickerModal';
 import { ConfirmModal } from 'packages/obsidian/src/modals/ConfirmModal';
 import { TemplatePickerModal } from 'packages/obsidian/src/modals/TemplatePickerModal';
@@ -14,7 +14,7 @@ import { TemplateRegistry } from 'packages/obsidian/src/templates/TemplateRegist
 import { createObsidianSpecialVariableRegistry, ObsidianVariableEnvironment } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
 import type { SafeJsExecutionResult, SafeJsExpressionOptions } from '@lemons_dev/obsidian-safe-js-api';
 import { DEFAULT_SETTINGS, loadPluginSettings } from 'packages/obsidian/src/settings/PluginSettings';
-import { TemplateCreationService } from 'packages/obsidian/src/templates/TemplateCreationService';
+import { TemplateCreationHelper } from 'packages/obsidian/src/templates/TemplateCreationHelper';
 import { VaultFolderService } from 'packages/obsidian/src/vault/VaultFolderService';
 
 class MockSafeJsExpressionApi {
@@ -285,7 +285,7 @@ describe('vault folders', () => {
 
 describe('template creation', () => {
 	test('derives editable defaults and validates the final identity', () => {
-		let creation = new TemplateCreationService();
+		let creation = new TemplateCreationHelper();
 		expect(creation.defaultsForName(' Über Project Note ')).toEqual({ id: 'uber-project-note', filename: 'uber-project-note.md' });
 		expect(creation.normalize({ name: ' Project note ', id: 'project_note', filename: 'Project note' })).toEqual({
 			name: 'Project note',
@@ -334,7 +334,7 @@ describe('Obsidian special variables', () => {
 });
 
 describe('metadata editor state', () => {
-	let metadata = new TemplateMetadataService(createObsidianSpecialVariableRegistry());
+	let metadata = new TemplateMetadataHelper(createObsidianSpecialVariableRegistry());
 
 	test('keeps state conversion and frontmatter merging independent from the modal', () => {
 		let content = '---\ntemplate: { id: old, name: Old }\ncustom: keep\n---\nBody';

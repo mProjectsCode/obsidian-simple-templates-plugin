@@ -2,14 +2,15 @@ import { errorMessage, FormulaError, MissingRequiredVariableError, VariableResol
 import type { ResolvedVariables, VariableDefinition } from 'packages/core/src/domain/Types';
 import type { ExpressionEvaluator } from 'packages/core/src/expressions/ExpressionEvaluator';
 import type { SpecialVariableRegistry } from 'packages/core/src/variables/SpecialVariableRegistry';
-import { InputValueService } from 'packages/core/src/variables/InputValueService';
+import { InputValueHelper } from 'packages/core/src/variables/InputValueHelper';
 
 /**
  * Resolves template variables through special sources, user input, Safe JS expressions,
  * defaults, type coercion, and required-value checks.
  */
 export class VariableResolver<Environment> {
-	private readonly inputValues = new InputValueService();
+	private readonly inputValues = new InputValueHelper();
+
 	constructor(
 		private readonly specialVariables: SpecialVariableRegistry<Environment>,
 		private readonly expressions: ExpressionEvaluator,
@@ -64,7 +65,9 @@ export class VariableResolver<Environment> {
 
 		// Coerce and validate inputs before formulas consume them.
 		for (let [name, definition] of Object.entries(definitions)) {
-			if (definition.type !== 'input') continue;
+			if (definition.type !== 'input') {
+				continue;
+			}
 
 			values[name] = this.inputValues.coerce(name, definition, values[name]);
 
@@ -85,7 +88,9 @@ export class VariableResolver<Environment> {
 		sourcePath?: string,
 	): Promise<void> {
 		for (let [name, definition] of Object.entries(definitions)) {
-			if (definition.type !== 'formula') continue;
+			if (definition.type !== 'formula') {
+				continue;
+			}
 
 			try {
 				let directDependency = definitions[definition.formula];
