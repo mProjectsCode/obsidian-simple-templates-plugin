@@ -10,6 +10,7 @@ export * from 'packages/core/src/output/OutputFolderProvider';
 export * from 'packages/core/src/output/OutputPathResolver';
 export * from 'packages/core/src/output/VaultPathService';
 export * from 'packages/core/src/templates/TemplateEngine';
+export * from 'packages/core/src/templates/TemplateCompiler';
 export * from 'packages/core/src/templates/TemplateParser';
 export * from 'packages/core/src/templates/TemplateProgramParser';
 export * from 'packages/core/src/templates/TemplateRenderer';

@@ -27,6 +27,10 @@ export class TemplateRegistryMonitor {
 			250,
 			true,
 		);
+		this.plugin.register(() => {
+			refreshFiles.cancel();
+			pendingFiles.clear();
+		});
 		let scheduleFile = (file: TAbstractFile): void => {
 			if (!(file instanceof TFile) || !this.affectsRegistry(file)) return;
 			pendingFiles.set(file.path, file);

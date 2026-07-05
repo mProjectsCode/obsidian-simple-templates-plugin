@@ -1,12 +1,9 @@
 import { NoteTemplateExecutor } from 'packages/obsidian/src/notes/NoteTemplateExecutor';
-import {
-	createObsidianSpecialVariableRegistry,
-	type ObsidianSpecialVariableRegistry,
-} from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
+import { createObsidianSpecialVariableRegistry } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
 import { DEFAULT_SETTINGS, loadPluginSettings } from 'packages/obsidian/src/settings/PluginSettings';
 import type { PluginSettings } from 'packages/obsidian/src/settings/PluginSettings';
 import { SimpleTemplatesSettingsTab } from 'packages/obsidian/src/settings/SettingsTab';
-import { TemplateMetadataManager } from 'packages/obsidian/src/templates/TemplateMetadataManager';
+import { TemplateManagementController } from 'packages/obsidian/src/templates/TemplateManagementController';
 import { TemplateRegistry } from 'packages/obsidian/src/templates/TemplateRegistry';
 import { TemplateRegistryMonitor } from 'packages/obsidian/src/templates/TemplateRegistryMonitor';
 import 'packages/obsidian/src/styles.css';
@@ -15,16 +12,25 @@ import { Notice, Plugin } from 'obsidian';
 export default class SimpleTemplatesPlugin extends Plugin {
 	settings: PluginSettings = structuredClone(DEFAULT_SETTINGS);
 	registry!: TemplateRegistry;
-	specialVariables!: ObsidianSpecialVariableRegistry;
-	private executor!: NoteTemplateExecutor;
-	private metadata!: TemplateMetadataManager;
+	private noteExecutor!: NoteTemplateExecutor;
+	private templateManagement!: TemplateManagementController;
 
 	override async onload(): Promise<void> {
 		this.settings = loadPluginSettings(await this.loadData());
-		this.specialVariables = createObsidianSpecialVariableRegistry();
-		this.registry = new TemplateRegistry(this.app.vault, () => this.settings.templateFolderPath, this.specialVariables);
-		this.executor = new NoteTemplateExecutor(this);
-		this.metadata = new TemplateMetadataManager(this);
+		let specialVariables = createObsidianSpecialVariableRegistry();
+		this.registry = new TemplateRegistry(this.app.vault, () => this.settings.templateFolderPath, specialVariables);
+		this.noteExecutor = new NoteTemplateExecutor({
+			plugin: this,
+			registry: this.registry,
+			specialVariables,
+			getSettings: () => this.settings,
+		});
+		this.templateManagement = new TemplateManagementController({
+			app: this.app,
+			registry: this.registry,
+			specialVariables,
+			getSettings: () => this.settings,
+		});
 
 		this.addSettingTab(new SimpleTemplatesSettingsTab(this.app, this));
 		this.registerCommands();
@@ -41,22 +47,22 @@ export default class SimpleTemplatesPlugin extends Plugin {
 		this.addCommand({
 			id: 'create-template',
 			name: 'Create template',
-			callback: () => this.metadata.create(),
+			callback: () => this.templateManagement.create(),
 		});
 		this.addCommand({
 			id: 'create-note-from-template',
 			name: 'Create note from template',
-			callback: () => this.executor.execute(),
+			callback: () => this.noteExecutor.execute(),
 		});
 		this.addCommand({
 			id: 'edit-current-template-metadata',
 			name: 'Edit current template metadata',
-			callback: () => this.metadata.editCurrent(),
+			callback: () => this.templateManagement.editCurrent(),
 		});
 		this.addCommand({
 			id: 'edit-template-metadata',
 			name: 'Edit template metadata…',
-			callback: () => this.metadata.pick(),
+			callback: () => this.templateManagement.pick(),
 		});
 		this.addCommand({
 			id: 'refresh-template-registry',
@@ -69,7 +75,7 @@ export default class SimpleTemplatesPlugin extends Plugin {
 		this.addCommand({
 			id: 'validate-templates',
 			name: 'Validate templates',
-			callback: () => this.metadata.showValidationSummary(),
+			callback: () => this.templateManagement.showValidationSummary(),
 		});
 	}
 
@@ -81,7 +87,7 @@ export default class SimpleTemplatesPlugin extends Plugin {
 					item
 						.setTitle('Create note from template')
 						.setIcon('copy-plus')
-						.onClick(() => this.executor.execute()),
+						.onClick(() => this.noteExecutor.execute()),
 				);
 			}),
 		);

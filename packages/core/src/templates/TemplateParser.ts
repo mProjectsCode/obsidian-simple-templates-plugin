@@ -1,5 +1,4 @@
 import { TemplateParseError } from 'packages/core/src/domain/Errors';
-import type { TemplateAst } from 'packages/core/src/domain/TemplateAst';
 import type {
 	NoteOutputDefinition,
 	ParseResult,
@@ -9,7 +8,7 @@ import type {
 	VariableDefinition,
 } from 'packages/core/src/domain/Types';
 import { FrontmatterService } from 'packages/core/src/frontmatter/FrontmatterService';
-import { TemplateProgramParser } from 'packages/core/src/templates/TemplateProgramParser';
+import { TemplateCompiler } from 'packages/core/src/templates/TemplateCompiler';
 import { TemplateValidator } from 'packages/core/src/templates/TemplateValidator';
 import type { SpecialVariableCatalog } from 'packages/core/src/variables/SpecialVariableRegistry';
 
@@ -33,7 +32,7 @@ export class TemplateParser {
 	constructor(
 		specialVariables: SpecialVariableCatalog,
 		private readonly frontmatter = new FrontmatterService(),
-		private readonly programParser = new TemplateProgramParser(),
+		private readonly compiler = new TemplateCompiler(),
 		validator?: TemplateValidator,
 	) {
 		this.validator = validator ?? new TemplateValidator(specialVariables);
@@ -60,7 +59,7 @@ export class TemplateParser {
 				...(blocks[0] !== undefined ? { outputFrontmatterTemplate: blocks[0] } : {}),
 				rawFrontmatter: document.raw,
 				parsedFrontmatter: document.data,
-				ast: this.compileAst(body, blocks[0], output),
+				ast: this.compiler.compile(body, blocks[0], output ?? undefined),
 			};
 			let issues = this.uniqueIssues([...this.validator.validateMetadata(document.data), ...this.validator.validate(template)]);
 			if (blocks.length > 1)
@@ -167,18 +166,6 @@ export class TemplateParser {
 			name: typeof identity.name === 'string' ? identity.name : '',
 			...(typeof identity.description === 'string' ? { description: identity.description } : {}),
 			...(Array.isArray(identity.tags) && identity.tags.every(tag => typeof tag === 'string') ? { tags: identity.tags } : {}),
-		};
-	}
-
-	private compileAst(body: string, frontmatter: string | undefined, output: NoteOutputDefinition | null): TemplateAst {
-		return {
-			type: 'template',
-			body: this.programParser.parse(body),
-			...(frontmatter !== undefined ? { noteFrontmatter: this.programParser.parse(frontmatter) } : {}),
-			...(typeof output?.filename === 'string' ? { filename: this.programParser.parse(output.filename) } : {}),
-			...(output?.folder?.mode === 'path' && typeof output.folder.path === 'string'
-				? { folder: this.programParser.parse(output.folder.path) }
-				: {}),
 		};
 	}
 }

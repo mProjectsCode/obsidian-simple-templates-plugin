@@ -3,7 +3,7 @@ import type { ExpressionEvaluator } from 'packages/core/src/expressions/Expressi
 import { FrontmatterService } from 'packages/core/src/frontmatter/FrontmatterService';
 import type { OutputFolderProvider } from 'packages/core/src/output/OutputFolderProvider';
 import { OutputPathResolver } from 'packages/core/src/output/OutputPathResolver';
-import { TemplateProgramParser } from 'packages/core/src/templates/TemplateProgramParser';
+import { TemplateCompiler } from 'packages/core/src/templates/TemplateCompiler';
 import { TemplateRenderer } from 'packages/core/src/templates/TemplateRenderer';
 import type { SpecialVariableRegistry } from 'packages/core/src/variables/SpecialVariableRegistry';
 import { VariableResolver } from 'packages/core/src/variables/VariableResolver';
@@ -27,27 +27,15 @@ export class TemplateEngine<Environment> {
 		private readonly outputFolders: OutputFolderProvider,
 		private readonly frontmatter = new FrontmatterService(),
 		private readonly paths = new OutputPathResolver(),
-		private readonly programParser = new TemplateProgramParser(),
+		private readonly compiler = new TemplateCompiler(),
 	) {
 		this.variables = new VariableResolver(specialVariables, expressions);
-		this.renderer = new TemplateRenderer(expressions, programParser);
+		this.renderer = new TemplateRenderer(expressions);
 	}
 
 	async render(template: TemplateDefinition, environment: Environment, userValues: ResolvedVariables): Promise<RenderedNote> {
 		let values = await this.variables.resolve(template.variables, environment, userValues, template.sourcePath);
-		let ast =
-			template.ast ??
-			({
-				type: 'template',
-				body: this.programParser.parse(template.body),
-				...(template.outputFrontmatterTemplate !== undefined
-					? { noteFrontmatter: this.programParser.parse(template.outputFrontmatterTemplate) }
-					: {}),
-				...(typeof template.output?.filename === 'string' ? { filename: this.programParser.parse(template.output.filename) } : {}),
-				...(template.output?.folder?.mode === 'path' && typeof template.output.folder.path === 'string'
-					? { folder: this.programParser.parse(template.output.folder.path) }
-					: {}),
-			} as const);
+		let ast = template.ast ?? this.compiler.compile(template.body, template.outputFrontmatterTemplate, template.output);
 		let rendered = await this.renderer.renderAst(ast, values, template.sourcePath);
 		let outputFrontmatter = rendered.noteFrontmatter?.trim() ?? '';
 

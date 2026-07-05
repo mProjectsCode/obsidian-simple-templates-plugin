@@ -1,16 +1,11 @@
 import { FrontmatterService } from 'packages/core/src/index';
-import type { ValidationIssue, VariableDefinition } from 'packages/core/src/index';
-import {
-	applyEditableTemplateMetadata,
-	createEditableTemplateMetadata,
-	mergeEditableTemplateMetadata,
-	validateEditableTemplateMetadata,
-} from 'packages/obsidian/src/modals/TemplateMetadataState';
-import type { EditableTemplateMetadata } from 'packages/obsidian/src/modals/TemplateMetadataState';
+import type { ValidationIssue } from 'packages/core/src/index';
+import { TemplateMetadataForm } from 'packages/obsidian/src/modals/TemplateMetadataForm';
+import { TemplateMetadataService } from 'packages/obsidian/src/templates/TemplateMetadataService';
+import type { EditableTemplateMetadata } from 'packages/obsidian/src/templates/TemplateMetadataService';
 import type { App, TFile } from 'obsidian';
 import { Modal, Notice, SettingGroup } from 'obsidian';
 import { ConfirmModal } from 'packages/obsidian/src/modals/ConfirmModal';
-import { VariableEditorModal } from 'packages/obsidian/src/modals/VariableEditorModal';
 import type { ObsidianSpecialVariableRegistry } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
 
 /**
@@ -22,19 +17,26 @@ export class TemplateMetadataEditorModal extends Modal {
 	private previewEl: HTMLElement | null = null;
 	private validationEl: HTMLElement | null = null;
 	private readonly frontmatter = new FrontmatterService();
+	private readonly metadata: TemplateMetadataService;
+	private readonly form: TemplateMetadataForm;
 
 	constructor(
 		app: App,
 		private readonly file: TFile,
 		private originalContent: string,
 		private readonly otherIds: Map<string, string>,
-		private readonly specialVariables: ObsidianSpecialVariableRegistry,
+		specialVariables: ObsidianSpecialVariableRegistry,
 		private readonly onSaved: () => Promise<void>,
 		private readonly onReload: (file: TFile) => Promise<void>,
 	) {
 		super(app);
 		this.modalEl.addClass('simple-templates-modal');
-		this.state = createEditableTemplateMetadata(originalContent);
+		this.metadata = new TemplateMetadataService(specialVariables);
+		this.state = this.metadata.createEditable(originalContent);
+		this.form = new TemplateMetadataForm(app, this.state, specialVariables, {
+			render: () => this.render(),
+			updatePreview: () => this.updatePreview(),
+		});
 	}
 
 	override onOpen(): void {
@@ -54,13 +56,13 @@ export class TemplateMetadataEditorModal extends Modal {
 
 		let identityGroup = new SettingGroup(this.contentEl);
 		identityGroup.setHeading('Identity');
-		this.renderIdentityFields(identityGroup);
+		this.form.renderIdentity(identityGroup);
 
-		this.renderVariables();
+		this.form.renderVariables(this.contentEl);
 
 		let outputGroup = new SettingGroup(this.contentEl);
 		outputGroup.setHeading('Output');
-		this.renderOutput(outputGroup);
+		this.form.renderOutput(outputGroup);
 
 		this.renderPreview();
 		this.renderValidation();
@@ -94,223 +96,12 @@ export class TemplateMetadataEditorModal extends Modal {
 		});
 	}
 
-	/** Renders the three identity text fields (id, name, description) and the
-	 *  tags input. */
-	private renderIdentityFields(group: SettingGroup): void {
-		group.addSetting(setting => {
-			setting.setName('Template ID').addText(text =>
-				text.setValue(this.state.template.id).onChange(value => {
-					this.state.template.id = value;
-					this.updatePreview();
-				}),
-			);
-		});
-
-		group.addSetting(setting => {
-			setting.setName('Name').addText(text =>
-				text.setValue(this.state.template.name).onChange(value => {
-					this.state.template.name = value;
-					this.updatePreview();
-				}),
-			);
-		});
-
-		group.addSetting(setting => {
-			setting.setName('Description').addText(text =>
-				text.setValue(this.state.template.description ?? '').onChange(value => {
-					if (value) this.state.template.description = value;
-					else delete this.state.template.description;
-					this.updatePreview();
-				}),
-			);
-		});
-
-		group.addSetting(setting => {
-			setting
-				.setName('Tags')
-				.setDesc('Comma-separated')
-				.addText(text =>
-					text.setValue(this.state.template.tags?.join(', ') ?? '').onChange(value => {
-						let tags = value
-							.split(',')
-							.map(tag => tag.trim())
-							.filter(Boolean);
-						if (tags.length) this.state.template.tags = tags;
-						else delete this.state.template.tags;
-						this.updatePreview();
-					}),
-				);
-		});
-	}
-
-	/** Renders variables as an ordered summary list with focused actions. */
-	private renderVariables(): void {
-		let group = new SettingGroup(this.contentEl);
-		group.setHeading('Variables');
-		let entries = Object.entries(this.state.variables);
-
-		for (let [index, [name, definition]] of entries.entries()) {
-			group.addSetting(setting => {
-				let detail = definition.type === 'input' ? `input · ${definition.inputType}` : definition.type;
-				setting.setName(name).setDesc(definition.label ? `${definition.label} · ${detail}` : detail);
-				setting
-					.addButton(button =>
-						button
-							.setIcon('arrow-up')
-							.setTooltip(`Move ${name} up`)
-							.setDisabled(index === 0)
-							.onClick(() => this.moveVariable(index, index - 1)),
-					)
-					.addButton(button =>
-						button
-							.setIcon('arrow-down')
-							.setTooltip(`Move ${name} down`)
-							.setDisabled(index === entries.length - 1)
-							.onClick(() => this.moveVariable(index, index + 1)),
-					)
-					.addButton(button =>
-						button
-							.setIcon('pencil')
-							.setTooltip(`Edit ${name}`)
-							.onClick(() => this.openVariableEditor(name, definition)),
-					)
-					.addButton(button =>
-						button
-							.setIcon('trash-2')
-							.setTooltip(`Delete ${name}`)
-							.setDestructive()
-							.onClick(() => {
-								delete this.state.variables[name];
-								this.render();
-							}),
-					);
-			});
-		}
-
-		group.addSetting(setting => {
-			setting.addButton(button => button.setButtonText('Add variable').onClick(() => this.openNewVariableEditor()));
-		});
-	}
-
-	private openVariableEditor(name: string, definition: VariableDefinition): void {
-		new VariableEditorModal(
-			this.app,
-			name,
-			name,
-			definition,
-			new Set(Object.keys(this.state.variables)),
-			this.specialVariables,
-			(updatedName, updatedDefinition) => {
-				let entries = Object.entries(this.state.variables).map(([entryName, entryDefinition]) =>
-					entryName === name ? ([updatedName, updatedDefinition] as const) : ([entryName, entryDefinition] as const),
-				);
-				this.state.variables = Object.fromEntries(entries);
-				this.render();
-			},
-		).open();
-	}
-
-	private openNewVariableEditor(): void {
-		let index = 1;
-		while (`variable${index}` in this.state.variables) index += 1;
-		new VariableEditorModal(
-			this.app,
-			null,
-			`variable${index}`,
-			{ type: 'input', inputType: 'text' },
-			new Set(Object.keys(this.state.variables)),
-			this.specialVariables,
-			(name, definition) => {
-				this.state.variables[name] = definition;
-				this.render();
-			},
-		).open();
-	}
-
-	private moveVariable(fromIndex: number, toIndex: number): void {
-		let entries = Object.entries(this.state.variables);
-		let [entry] = entries.splice(fromIndex, 1);
-		if (!entry) return;
-		entries.splice(toIndex, 0, entry);
-		this.state.variables = Object.fromEntries(entries);
-		this.render();
-	}
-
-	/** Renders the output configuration fields. */
-	private renderOutput(group: SettingGroup): void {
-		let mode = this.state.output.folder?.mode ?? 'default';
-
-		// Folder mode selector
-		group.addSetting(setting => {
-			setting.setName('Folder mode').addDropdown(dropdown =>
-				dropdown
-					.addOption('default', 'Default output folder')
-					.addOption('same-as-active-file', 'Same folder as active file')
-					.addOption('path', 'Explicit path')
-					.setValue(mode)
-					.onChange(value => {
-						this.state.output.folder =
-							value === 'path' ? { mode: 'path', path: '' } : { mode: value as 'default' | 'same-as-active-file' };
-						this.render();
-					}),
-			);
-		});
-
-		// Path input (only shown in "Explicit path" mode)
-		if (this.state.output.folder?.mode === 'path') {
-			group.addSetting(setting => {
-				setting.setName('Folder path').addText(text =>
-					text.setValue(this.state.output.folder?.mode === 'path' ? this.state.output.folder.path : '').onChange(value => {
-						if (this.state.output.folder?.mode === 'path') this.state.output.folder.path = value;
-						this.updatePreview();
-					}),
-				);
-			});
-		}
-
-		// Filename template
-		group.addSetting(setting => {
-			setting.setName('Filename template').addText(text =>
-				text.setValue(this.state.output.filename ?? '').onChange(value => {
-					if (value) this.state.output.filename = value;
-					else delete this.state.output.filename;
-					this.updatePreview();
-				}),
-			);
-		});
-
-		// Conflict strategy
-		group.addSetting(setting => {
-			setting.setName('Conflict strategy').addDropdown(dropdown =>
-				dropdown
-					.addOption('prompt', 'Prompt')
-					.addOption('append-number', 'Append number')
-					.addOption('cancel', 'Cancel')
-					.setValue(this.state.output.conflict ?? 'prompt')
-					.onChange(value => {
-						this.state.output.conflict = value as 'prompt' | 'append-number' | 'cancel';
-						this.updatePreview();
-					}),
-			);
-		});
-
-		// Open after create toggle
-		group.addSetting(setting => {
-			setting.setName('Open after create').addToggle(toggle =>
-				toggle.setValue(this.state.output.openAfterCreate ?? true).onChange(value => {
-					this.state.output.openAfterCreate = value;
-					this.updatePreview();
-				}),
-			);
-		});
-	}
-
 	private mergedContent(): string {
-		return mergeEditableTemplateMetadata(this.originalContent, this.state);
+		return this.metadata.merge(this.originalContent, this.state);
 	}
 
 	private getIssues(): ValidationIssue[] {
-		return validateEditableTemplateMetadata(this.file.path, this.originalContent, this.state, this.otherIds, this.specialVariables);
+		return this.metadata.validate(this.file.path, this.originalContent, this.state, this.otherIds);
 	}
 
 	/** Re-renders the YAML preview code block and the validation status. */
@@ -362,7 +153,7 @@ export class TemplateMetadataEditorModal extends Modal {
 		}
 
 		await this.app.fileManager.processFrontMatter(this.file, (frontmatter: Record<string, unknown>) => {
-			applyEditableTemplateMetadata(frontmatter, this.state);
+			this.metadata.apply(frontmatter, this.state);
 		});
 		this.originalContent = await this.app.vault.read(this.file);
 		await this.onSaved();

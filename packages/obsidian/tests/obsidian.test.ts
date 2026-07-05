@@ -1,13 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import { MockTFile } from 'packages/obsidian/tests/ObsidianMock';
+import { MockTFile, MockTFolder } from 'packages/obsidian/tests/ObsidianMock';
 import { FileConflictError, FormulaError } from 'packages/core/src/index';
 import { SafeJsExpressionEvaluator } from 'packages/obsidian/src/expressions/SafeJsExpressionEvaluator';
-import {
-	applyEditableTemplateMetadata,
-	createEditableTemplateMetadata,
-	mergeEditableTemplateMetadata,
-	validateEditableTemplateMetadata,
-} from 'packages/obsidian/src/modals/TemplateMetadataState';
+import { TemplateMetadataService } from 'packages/obsidian/src/templates/TemplateMetadataService';
 import { FilePickerModal } from 'packages/obsidian/src/modals/FilePickerModal';
 import { TemplatePickerModal } from 'packages/obsidian/src/modals/TemplatePickerModal';
 import { VariableInputModal } from 'packages/obsidian/src/modals/VariableInputModal';
@@ -19,6 +14,7 @@ import { createObsidianSpecialVariableRegistry, ObsidianVariableEnvironment } fr
 import type { SafeJsExecutionResult, SafeJsExpressionOptions } from '@lemons_dev/obsidian-safe-js-api';
 import { DEFAULT_SETTINGS, loadPluginSettings } from 'packages/obsidian/src/settings/PluginSettings';
 import { TemplateCreationService } from 'packages/obsidian/src/templates/TemplateCreationService';
+import { VaultFolderService } from 'packages/obsidian/src/vault/VaultFolderService';
 
 class MockSafeJsExpressionApi {
 	readonly calls: { expression: string; options: SafeJsExpressionOptions }[] = [];
@@ -234,6 +230,37 @@ describe('plugin settings', () => {
 	test('loads the flat unreleased settings shape and validates stored values', () => {
 		expect(loadPluginSettings({ showContextMenuItems: false })).toEqual({ ...DEFAULT_SETTINGS, showContextMenuItems: false });
 		expect(loadPluginSettings({ templateFolderPath: 12, showContextMenuItems: 'yes' })).toEqual(DEFAULT_SETTINGS);
+		expect(loadPluginSettings({ templateFolderPath: '../Templates', defaultOutputFolderPath: '/Notes' })).toEqual(DEFAULT_SETTINGS);
+		expect(loadPluginSettings({ templateFolderPath: ' Templates\\Daily ', defaultOutputFolderPath: './Notes' })).toEqual({
+			...DEFAULT_SETTINGS,
+			templateFolderPath: 'Templates/Daily',
+			defaultOutputFolderPath: 'Notes',
+		});
+	});
+});
+
+describe('vault folders', () => {
+	test('creates missing parents and rejects paths occupied by files', async () => {
+		let items = new Map<string, MockTFile | MockTFolder>();
+		let created: string[] = [];
+		let vault = {
+			getAbstractFileByPath(path: string): MockTFile | MockTFolder | null {
+				return items.get(path) ?? null;
+			},
+			async createFolder(path: string): Promise<void> {
+				created.push(path);
+				items.set(path, new MockTFolder(path));
+			},
+		};
+		let folders = new VaultFolderService(vault as never);
+
+		await folders.ensureExists('Templates/Daily');
+		expect(created).toEqual(['Templates', 'Templates/Daily']);
+		await folders.ensureExists('Templates/Daily');
+		expect(created).toHaveLength(2);
+
+		items.set('Files', new MockTFile('Files'));
+		await expect(folders.ensureExists('Files/Nested')).rejects.toThrow('occupied by a file');
 	});
 });
 
@@ -288,34 +315,30 @@ describe('Obsidian special variables', () => {
 });
 
 describe('metadata editor state', () => {
+	let metadata = new TemplateMetadataService(createObsidianSpecialVariableRegistry());
+
 	test('keeps state conversion and frontmatter merging independent from the modal', () => {
 		let content = '---\ntemplate: { id: old, name: Old }\ncustom: keep\n---\nBody';
-		let state = createEditableTemplateMetadata(content);
+		let state = metadata.createEditable(content);
 		state.template.name = 'New';
-		let merged = mergeEditableTemplateMetadata(content, state);
+		let merged = metadata.merge(content, state);
 		expect(merged).toContain('name: New');
 		expect(merged).toContain('custom: keep');
 		expect(merged.endsWith('Body')).toBeTrue();
 	});
 
 	test('updates only plugin-owned frontmatter keys', () => {
-		let state = createEditableTemplateMetadata('---\ntemplate: { id: old, name: Old }\n---\n');
+		let state = metadata.createEditable('---\ntemplate: { id: old, name: Old }\n---\n');
 		state.template = { id: 'new', name: 'New' };
 		let frontmatter: Record<string, unknown> = { template: { id: 'old' }, custom: 'keep' };
-		applyEditableTemplateMetadata(frontmatter, state);
+		metadata.apply(frontmatter, state);
 		expect(frontmatter).toEqual({ template: { id: 'new', name: 'New' }, variables: {}, output: {}, custom: 'keep' });
 	});
 
 	test('keeps undeclared variable references as blocking errors', () => {
 		let content = '---\ntemplate: { id: old, name: Old }\n---\n{{ missing }}';
-		let state = createEditableTemplateMetadata(content);
-		let issues = validateEditableTemplateMetadata(
-			'Templates/old.md',
-			content,
-			state,
-			new Map(),
-			createObsidianSpecialVariableRegistry(),
-		);
+		let state = metadata.createEditable(content);
+		let issues = metadata.validate('Templates/old.md', content, state, new Map());
 		expect(issues.some(issue => issue.severity === 'error' && issue.message.includes('missing'))).toBeTrue();
 	});
 });

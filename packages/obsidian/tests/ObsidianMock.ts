@@ -4,6 +4,10 @@ export class MockTFile {
 	constructor(readonly path: string) {}
 }
 
+export class MockTFolder {
+	constructor(readonly path: string) {}
+}
+
 class MockFuzzySuggestModal {
 	modalEl = {
 		addClass(_className: string): void {},
@@ -38,5 +42,6 @@ void mock.module('obsidian', function createObsidianMock() {
 		Modal: MockModal,
 		SettingGroup: MockSettingGroup,
 		TFile: MockTFile,
+		TFolder: MockTFolder,
 	};
 });
