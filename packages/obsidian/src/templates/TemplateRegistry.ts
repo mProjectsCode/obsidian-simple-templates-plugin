@@ -1,4 +1,4 @@
-import { TemplateParser, VaultPathService } from 'packages/core/src/index';
+import { errorMessage, TemplateParser, VaultPathService } from 'packages/core/src/index';
 import type { SpecialVariableCatalog, TemplateDefinition, ValidationIssue } from 'packages/core/src/index';
 import { TFile } from 'obsidian';
 import type { Vault } from 'obsidian';
@@ -44,8 +44,7 @@ export class TemplateRegistry {
 		return this.enqueue(async () => {
 			let folder = this.normalizedFolder();
 			if (folder === null) return;
-			let prefix = folder ? `${folder}/` : '';
-			if (!file.path.startsWith(prefix)) this.baseResults.delete(file.path);
+			if (!this.pathService.isInFolder(file.path, folder)) this.baseResults.delete(file.path);
 			else this.baseResults.set(file.path, await this.parseFile(file));
 			this.publishResults();
 		});
@@ -62,8 +61,7 @@ export class TemplateRegistry {
 		let folder = this.normalizedFolder();
 		if (folder === null) return;
 
-		let prefix = folder ? `${folder}/` : '';
-		let files = this.vault.getMarkdownFiles().filter(file => file.path.startsWith(prefix));
+		let files = this.vault.getMarkdownFiles().filter(file => this.pathService.isInFolder(file.path, folder));
 
 		let parsed = await Promise.all(files.map(file => this.parseFile(file)));
 		this.baseResults = new Map(parsed.map(result => [result.path, result]));
@@ -80,7 +78,7 @@ export class TemplateRegistry {
 				{
 					path: configuredFolder,
 					template: null,
-					issues: [{ severity: 'error', message: error instanceof Error ? error.message : String(error) }],
+					issues: [{ severity: 'error', message: errorMessage(error) }],
 				},
 			];
 			return null;
@@ -103,7 +101,7 @@ export class TemplateRegistry {
 				issues: [
 					{
 						severity: 'error',
-						message: `Could not read template: ${error instanceof Error ? error.message : String(error)}`,
+						message: `Could not read template: ${errorMessage(error)}`,
 					},
 				],
 			};

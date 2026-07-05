@@ -12,3 +12,8 @@ export class MissingRequiredVariableError extends Error {}
 export class FileConflictError extends Error {}
 /** Thrown when frontmatter merging or editing fails. */
 export class FrontmatterEditError extends Error {}
+
+/** Returns a stable message for values caught from an unknown throw. */
+export function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}

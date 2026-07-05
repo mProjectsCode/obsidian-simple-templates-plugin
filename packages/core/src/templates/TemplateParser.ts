@@ -1,4 +1,6 @@
-import { TemplateParseError } from 'packages/core/src/domain/Errors';
+import { errorMessage, TemplateParseError } from 'packages/core/src/domain/Errors';
+import { asRecord } from 'packages/core/src/domain/UnknownValue';
+import { readSourceLines, withoutTrailingLineBreak } from 'packages/core/src/domain/SourceText';
 import type {
 	NoteOutputDefinition,
 	ParseResult,
@@ -11,13 +13,6 @@ import { FrontmatterService } from 'packages/core/src/frontmatter/FrontmatterSer
 import { TemplateCompiler } from 'packages/core/src/templates/TemplateCompiler';
 import { TemplateValidator } from 'packages/core/src/templates/TemplateValidator';
 import type { SpecialVariableCatalog } from 'packages/core/src/variables/SpecialVariableRegistry';
-
-interface SourceLine {
-	start: number;
-	contentEnd: number;
-	end: number;
-	text: string;
-}
 
 interface Fence {
 	character: '`' | '~';
@@ -76,8 +71,7 @@ export class TemplateParser {
 
 			return { template, issues };
 		} catch (error) {
-			let message = error instanceof Error ? error.message : String(error);
-			return { template: null, issues: [{ severity: 'error', message }] };
+			return { template: null, issues: [{ severity: 'error', message: errorMessage(error) }] };
 		}
 	}
 
@@ -92,7 +86,7 @@ export class TemplateParser {
 	}
 
 	private extractOutputFrontmatter(source: string): { body: string; blocks: string[] } {
-		let lines = this.sourceLines(source);
+		let lines = readSourceLines(source);
 		let blocks: string[] = [];
 		let removals: { start: number; end: number }[] = [];
 		for (let index = 0; index < lines.length; index += 1) {
@@ -114,7 +108,7 @@ export class TemplateParser {
 			if (fence.info === 'note-frontmatter') {
 				let closing = lines[closingIndex];
 				if (!closing) break;
-				blocks.push(this.withoutTrailingNewline(source.slice(line.end, closing.start)));
+				blocks.push(withoutTrailingLineBreak(source.slice(line.end, closing.start)));
 				removals.push({ start: line.start, end: closing.end });
 			}
 
@@ -133,21 +127,6 @@ export class TemplateParser {
 		}
 
 		return { body, blocks };
-	}
-
-	private sourceLines(source: string): SourceLine[] {
-		let lines: SourceLine[] = [];
-		let start = 0;
-		while (start < source.length) {
-			let contentEnd = start;
-			while (contentEnd < source.length && source[contentEnd] !== '\r' && source[contentEnd] !== '\n') contentEnd += 1;
-			let end = contentEnd;
-			if (source[end] === '\r') end += 1;
-			if (source[end] === '\n') end += 1;
-			lines.push({ start, contentEnd, end, text: source.slice(start, contentEnd) });
-			start = end;
-		}
-		return lines;
 	}
 
 	private openingFence(line: string): Fence | null {
@@ -188,15 +167,8 @@ export class TemplateParser {
 		return true;
 	}
 
-	private withoutTrailingNewline(value: string): string {
-		if (value.endsWith('\r\n')) return value.slice(0, -2);
-		if (value.endsWith('\r') || value.endsWith('\n')) return value.slice(0, -1);
-		return value;
-	}
-
 	private asObject(value: unknown): Record<string, unknown> | null {
-		if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
-		return value as Record<string, unknown>;
+		return asRecord(value);
 	}
 
 	private readIdentity(value: unknown): TemplateIdentity {

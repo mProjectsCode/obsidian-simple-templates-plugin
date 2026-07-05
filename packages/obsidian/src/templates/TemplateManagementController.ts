@@ -1,4 +1,4 @@
-import { FrontmatterService, VaultPathService } from 'packages/core/src/index';
+import { errorMessage, FrontmatterService, VaultPathService } from 'packages/core/src/index';
 import { ConfirmModal } from 'packages/obsidian/src/modals/ConfirmModal';
 import { FilePickerModal } from 'packages/obsidian/src/modals/FilePickerModal';
 import { TemplateCreationModal } from 'packages/obsidian/src/modals/TemplateCreationModal';
@@ -58,7 +58,7 @@ export class TemplateManagementController {
 			await this.openEditor(file);
 		} catch (error) {
 			console.error('Simple Templates: template creation failed', error);
-			new Notice(error instanceof Error ? error.message : String(error));
+			new Notice(errorMessage(error));
 		}
 	}
 
@@ -91,7 +91,7 @@ export class TemplateManagementController {
 	private isInsideTemplateFolder(path: string): boolean {
 		try {
 			let folder = this.paths.normalizeFolder(this.dependencies.getSettings().templateFolderPath);
-			return !folder || path.startsWith(`${folder}/`);
+			return this.paths.isInFolder(path, folder);
 		} catch {
 			return false;
 		}
@@ -105,7 +105,7 @@ export class TemplateManagementController {
 			let open = await new ConfirmModal(
 				this.dependencies.app,
 				'Invalid YAML frontmatter',
-				`${error instanceof Error ? error.message : String(error)} Open the file for manual repair?`,
+				`${errorMessage(error)} Open the file for manual repair?`,
 				'Open file',
 			).confirm();
 			if (open) await this.dependencies.app.workspace.getLeaf(false).openFile(file);

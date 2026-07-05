@@ -4,6 +4,7 @@ import { FileConflictError, FormulaError } from 'packages/core/src/index';
 import { SafeJsExpressionEvaluator } from 'packages/obsidian/src/expressions/SafeJsExpressionEvaluator';
 import { TemplateMetadataService } from 'packages/obsidian/src/templates/TemplateMetadataService';
 import { FilePickerModal } from 'packages/obsidian/src/modals/FilePickerModal';
+import { ConfirmModal } from 'packages/obsidian/src/modals/ConfirmModal';
 import { TemplatePickerModal } from 'packages/obsidian/src/modals/TemplatePickerModal';
 import { VariableInputModal } from 'packages/obsidian/src/modals/VariableInputModal';
 import { NoteDestinationResolver } from 'packages/obsidian/src/notes/NoteDestinationResolver';
@@ -139,6 +140,24 @@ describe('picker modals', () => {
 		let choice = modal.choose();
 		modal.onClose();
 		expect(await choice).toBeNull();
+	});
+});
+
+describe('result-producing modals', () => {
+	test('resolve cancellation consistently and can be reopened', async () => {
+		let confirmation = new ConfirmModal({} as never, 'Confirm', 'Continue?', 'Continue');
+		let firstConfirmation = confirmation.confirm();
+		confirmation.onClose();
+		expect(await firstConfirmation).toBeFalse();
+
+		let secondConfirmation = confirmation.confirm();
+		confirmation.onClose();
+		expect(await secondConfirmation).toBeFalse();
+
+		let inputs = new VariableInputModal({} as never, { title: { type: 'input', inputType: 'text' } });
+		let result = inputs.collect();
+		inputs.onClose();
+		expect(await result).toBeNull();
 	});
 });
 

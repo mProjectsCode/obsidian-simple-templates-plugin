@@ -1,30 +1,27 @@
 import type { App } from 'obsidian';
-import { Modal, SettingGroup } from 'obsidian';
+import { SettingGroup } from 'obsidian';
+import { addModalActions } from 'packages/obsidian/src/modals/ModalActions';
+import { errorMessage } from 'packages/core/src/index';
+import { PromiseModal } from 'packages/obsidian/src/modals/PromiseModal';
 import { TemplateCreationService } from 'packages/obsidian/src/templates/TemplateCreationService';
 import type { TemplateCreationRequest } from 'packages/obsidian/src/templates/TemplateCreationService';
 
 /** Collects the identity and filename for a new template file. */
-export class TemplateCreationModal extends Modal {
+export class TemplateCreationModal extends PromiseModal<TemplateCreationRequest | null> {
 	private name = '';
 	private id = '';
 	private filename = '';
 	private idEdited = false;
 	private filenameEdited = false;
-	private resolve: (request: TemplateCreationRequest | null) => void = () => undefined;
-	private submitted = false;
 	private errorEl: HTMLElement | null = null;
 	private readonly creation = new TemplateCreationService();
 
 	constructor(app: App) {
-		super(app);
-		this.modalEl.addClass('simple-templates-modal');
+		super(app, null);
 	}
 
 	collect(): Promise<TemplateCreationRequest | null> {
-		return new Promise(resolve => {
-			this.resolve = resolve;
-			this.open();
-		});
+		return this.awaitResult();
 	}
 
 	override onOpen(): void {
@@ -80,21 +77,12 @@ export class TemplateCreationModal extends Modal {
 		});
 
 		this.errorEl = this.contentEl.createDiv({ cls: 'mod-warning' });
-		new SettingGroup(this.contentEl).addSetting(setting => {
-			setting
-				.addButton(button => button.setButtonText('Cancel').onClick(() => this.close()))
-				.addButton(button =>
-					button
-						.setCta()
-						.setButtonText('Create template')
-						.onClick(() => this.submit()),
-				);
-		});
-	}
-
-	override onClose(): void {
-		this.contentEl.empty();
-		if (!this.submitted) this.resolve(null);
+		addModalActions(
+			this.contentEl,
+			'Create template',
+			() => this.close(),
+			() => this.submit(),
+		);
 	}
 
 	private submit(): void {
@@ -102,12 +90,10 @@ export class TemplateCreationModal extends Modal {
 		try {
 			request = this.creation.normalize({ name: this.name, id: this.id, filename: this.filename });
 		} catch (error) {
-			this.errorEl?.setText(error instanceof Error ? error.message : String(error));
+			this.errorEl?.setText(errorMessage(error));
 			return;
 		}
 
-		this.submitted = true;
-		this.resolve(request);
-		this.close();
+		this.submitResult(request);
 	}
 }

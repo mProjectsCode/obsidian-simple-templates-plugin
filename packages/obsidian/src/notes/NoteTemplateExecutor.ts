@@ -1,5 +1,5 @@
 import { getSafeJsApi } from '@lemons_dev/obsidian-safe-js-api';
-import { TemplateEngine } from 'packages/core/src/index';
+import { errorMessage, TemplateEngine } from 'packages/core/src/index';
 import type { TemplateDefinition } from 'packages/core/src/index';
 import { SafeJsExpressionEvaluator } from 'packages/obsidian/src/expressions/SafeJsExpressionEvaluator';
 import { ConfirmModal } from 'packages/obsidian/src/modals/ConfirmModal';
@@ -79,7 +79,7 @@ export class NoteTemplateExecutor {
 			new Notice(`Created "${path}".`);
 		} catch (error) {
 			console.error('Simple Templates: note creation failed', error);
-			new Notice(error instanceof Error ? error.message : String(error));
+			new Notice(errorMessage(error));
 		}
 	}
 

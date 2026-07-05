@@ -1,5 +1,8 @@
 import { parse, parseDocument, stringify } from 'yaml';
-import { FrontmatterEditError, TemplateParseError } from 'packages/core/src/domain/Errors';
+import { errorMessage, FrontmatterEditError, TemplateParseError } from 'packages/core/src/domain/Errors';
+import { asRecord } from 'packages/core/src/domain/UnknownValue';
+import { readSourceLine } from 'packages/core/src/domain/SourceText';
+import type { SourceLine } from 'packages/core/src/domain/SourceText';
 
 export interface FrontmatterDocument {
 	raw: string | null;
@@ -8,22 +11,25 @@ export interface FrontmatterDocument {
 	hasFrontmatter: boolean;
 }
 
-interface LineBoundary {
-	contentEnd: number;
-	end: number;
+export interface TemplateFrontmatterFields {
+	template?: unknown;
+	variables?: unknown;
+	output?: unknown;
 }
+
+const TEMPLATE_FRONTMATTER_KEYS = ['template', 'variables', 'output'] as const;
 
 /** Owns Markdown frontmatter parsing, serialization, and template metadata updates. */
 export class FrontmatterService {
 	parse(content: string): FrontmatterDocument {
-		let opening = this.lineBoundary(content, 0);
+		let opening = readSourceLine(content, 0);
 		if (opening.end === opening.contentEnd || !this.isDelimiterLine(content, 0, opening))
 			return { raw: null, data: {}, body: content, hasFrontmatter: false };
 
 		let closingStart = opening.end;
-		let closing: LineBoundary | null = null;
+		let closing: SourceLine | null = null;
 		while (closingStart < content.length) {
-			let candidate = this.lineBoundary(content, closingStart);
+			let candidate = readSourceLine(content, closingStart);
 			if (this.isDelimiterLine(content, closingStart, candidate)) {
 				closing = candidate;
 				break;
@@ -42,7 +48,7 @@ export class FrontmatterService {
 				hasFrontmatter: true,
 			};
 		} catch (error) {
-			throw new TemplateParseError(`Invalid YAML frontmatter: ${error instanceof Error ? error.message : String(error)}`);
+			throw new TemplateParseError(`Invalid YAML frontmatter: ${errorMessage(error)}`);
 		}
 	}
 
@@ -50,18 +56,32 @@ export class FrontmatterService {
 		return stringify(data, { lineWidth: 0 }).trimEnd();
 	}
 
-	mergeTemplate(content: string, known: { template?: unknown; variables?: unknown; output?: unknown }): string {
+	mergeTemplate(content: string, known: TemplateFrontmatterFields): string {
 		let document = this.parse(content);
-		let yaml = document.hasFrontmatter && document.raw !== null ? this.mergeYamlDocument(document.raw, known) : this.serialize(known);
+		let yaml: string;
+		if (document.hasFrontmatter && document.raw !== null) {
+			yaml = this.mergeYamlDocument(document.raw, known);
+		} else {
+			let frontmatter: Record<string, unknown> = {};
+			this.applyTemplateFields(frontmatter, known);
+			yaml = this.serialize(frontmatter);
+		}
 		if (document.hasFrontmatter) return `---\n${yaml}\n---\n${document.body}`;
 		if (!yaml) throw new FrontmatterEditError('Cannot insert empty frontmatter.');
 		return `---\n${yaml}\n---\n${content}`;
 	}
 
-	private mergeYamlDocument(raw: string, known: { template?: unknown; variables?: unknown; output?: unknown }): string {
+	applyTemplateFields(frontmatter: Record<string, unknown>, known: TemplateFrontmatterFields): void {
+		for (let key of TEMPLATE_FRONTMATTER_KEYS) {
+			if (known[key] === undefined) delete frontmatter[key];
+			else frontmatter[key] = structuredClone(known[key]);
+		}
+	}
+
+	private mergeYamlDocument(raw: string, known: TemplateFrontmatterFields): string {
 		let document = parseDocument(raw);
 		if (document.errors.length > 0) throw new FrontmatterEditError(`Cannot edit YAML frontmatter: ${document.errors[0]?.message}`);
-		for (let key of ['template', 'variables', 'output'] as const) {
+		for (let key of TEMPLATE_FRONTMATTER_KEYS) {
 			if (known[key] === undefined) document.delete(key);
 			else document.set(key, structuredClone(known[key]));
 		}
@@ -73,20 +93,11 @@ export class FrontmatterService {
 			let value: unknown = parse(yaml);
 			return value === null ? {} : this.asObject(value);
 		} catch (error) {
-			throw new TemplateParseError(`Invalid rendered note frontmatter: ${error instanceof Error ? error.message : String(error)}`);
+			throw new TemplateParseError(`Invalid rendered note frontmatter: ${errorMessage(error)}`);
 		}
 	}
 
-	private lineBoundary(content: string, start: number): LineBoundary {
-		let contentEnd = start;
-		while (contentEnd < content.length && content[contentEnd] !== '\r' && content[contentEnd] !== '\n') contentEnd += 1;
-		let end = contentEnd;
-		if (content[end] === '\r') end += 1;
-		if (content[end] === '\n') end += 1;
-		return { contentEnd, end };
-	}
-
-	private isDelimiterLine(content: string, start: number, boundary: LineBoundary): boolean {
+	private isDelimiterLine(content: string, start: number, boundary: SourceLine): boolean {
 		if (content.slice(start, start + 3) !== '---') return false;
 		for (let index = start + 3; index < boundary.contentEnd; index += 1)
 			if (content[index] !== ' ' && content[index] !== '\t') return false;
@@ -94,8 +105,9 @@ export class FrontmatterService {
 	}
 
 	private asObject(value: unknown): Record<string, unknown> {
-		if (value === null || typeof value !== 'object' || Array.isArray(value))
-			throw new TemplateParseError('YAML frontmatter must contain a mapping.');
-		return value as Record<string, unknown>;
+		let record = asRecord(value);
+		if (!record) throw new TemplateParseError('YAML frontmatter must contain a mapping.');
+
+		return record;
 	}
 }

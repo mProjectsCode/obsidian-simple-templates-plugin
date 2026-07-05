@@ -13,4 +13,20 @@ export class VaultPathService {
 	join(folder: string, filename: string): string {
 		return folder ? `${folder}/${filename}` : filename;
 	}
+
+	isInFolder(path: string, folder: string): boolean {
+		return !folder || path.startsWith(`${folder}/`);
+	}
+
+	hasPathSeparator(filename: string): boolean {
+		return filename.includes('/') || filename.includes('\\');
+	}
+
+	hasUnsupportedFilenameCharacters(filename: string): boolean {
+		return [...filename].some(character => character.charCodeAt(0) < 32 || '<>:"|?*'.includes(character));
+	}
+
+	ensureMarkdownExtension(filename: string): string {
+		return /\.md$/i.test(filename) ? filename : `${filename}.md`;
+	}
 }

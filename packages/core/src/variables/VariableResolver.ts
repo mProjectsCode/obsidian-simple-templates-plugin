@@ -1,4 +1,4 @@
-import { FormulaError, MissingRequiredVariableError, VariableResolutionError } from 'packages/core/src/domain/Errors';
+import { errorMessage, FormulaError, MissingRequiredVariableError, VariableResolutionError } from 'packages/core/src/domain/Errors';
 import type { ResolvedVariables, VariableDefinition } from 'packages/core/src/domain/Types';
 import type { ExpressionEvaluator } from 'packages/core/src/expressions/ExpressionEvaluator';
 import type { SpecialVariableRegistry } from 'packages/core/src/variables/SpecialVariableRegistry';
@@ -96,7 +96,7 @@ export class VariableResolver<Environment> {
 				values[name] = await this.expressions.evaluateTemplateExpression(definition.formula, values, sourcePath);
 			} catch (error) {
 				throw new FormulaError(
-					`Expression for "${name}" failed: ${error instanceof Error ? error.message : String(error)} ` +
+					`Expression for "${name}" failed: ${errorMessage(error)} ` +
 						'Formula variables can only use variables declared above them.',
 				);
 			}

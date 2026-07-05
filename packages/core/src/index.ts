@@ -2,8 +2,11 @@
  *  from a single entry point. */
 
 export * from 'packages/core/src/domain/Errors';
+export * from 'packages/core/src/domain/SourceText';
 export * from 'packages/core/src/domain/TemplateAst';
+export * from 'packages/core/src/domain/TemplateNaming';
 export * from 'packages/core/src/domain/Types';
+export * from 'packages/core/src/domain/UnknownValue';
 export * from 'packages/core/src/expressions/ExpressionEvaluator';
 export * from 'packages/core/src/frontmatter/FrontmatterService';
 export * from 'packages/core/src/output/OutputFolderProvider';

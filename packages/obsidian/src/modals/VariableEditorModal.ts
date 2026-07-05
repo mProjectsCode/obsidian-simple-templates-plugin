@@ -1,9 +1,18 @@
-import { FrontmatterService, TemplateValidator, VARIABLE_INPUT_TYPES, VARIABLE_TYPES } from 'packages/core/src/index';
+import {
+	FrontmatterService,
+	inputTypeUsesOptions,
+	isValidVariableName,
+	splitAndTrim,
+	TemplateValidator,
+	VARIABLE_INPUT_TYPES,
+	VARIABLE_TYPES,
+} from 'packages/core/src/index';
 import type { VariableDefinition, VariableInputType, VariableType } from 'packages/core/src/index';
 import type { ObsidianSpecialVariableRegistry } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
 import type { App } from 'obsidian';
 import { Modal, SettingGroup } from 'obsidian';
 import { parse } from 'yaml';
+import { addModalActions } from 'packages/obsidian/src/modals/ModalActions';
 
 /** Edits one template variable in isolation and commits it when saved. */
 export class VariableEditorModal extends Modal {
@@ -38,16 +47,12 @@ export class VariableEditorModal extends Modal {
 
 		this.errorEl = this.contentEl.createDiv({ cls: 'mod-warning' });
 
-		new SettingGroup(this.contentEl).addSetting(setting => {
-			setting
-				.addButton(button => button.setButtonText('Cancel').onClick(() => this.close()))
-				.addButton(button =>
-					button
-						.setCta()
-						.setButtonText('Save variable')
-						.onClick(() => this.save()),
-				);
-		});
+		addModalActions(
+			this.contentEl,
+			'Save variable',
+			() => this.close(),
+			() => this.save(),
+		);
 	}
 
 	override onClose(): void {
@@ -127,7 +132,7 @@ export class VariableEditorModal extends Modal {
 					}
 					dropdown.setValue(definition.inputType).onChange(value => {
 						definition.inputType = value as VariableInputType;
-						if (definition.inputType !== 'select' && definition.inputType !== 'multiselect') {
+						if (!inputTypeUsesOptions(definition.inputType)) {
 							delete definition.options;
 						}
 						this.renderDetails();
@@ -165,17 +170,14 @@ export class VariableEditorModal extends Modal {
 				);
 		});
 
-		if (definition.inputType === 'select' || definition.inputType === 'multiselect') {
+		if (inputTypeUsesOptions(definition.inputType)) {
 			group.addSetting(setting => {
 				setting
 					.setName('Options')
 					.setDesc('Enter one available choice per line.')
 					.addTextArea(textarea =>
 						textarea.setValue(definition.options?.join('\n') ?? '').onChange(value => {
-							let options = value
-								.split(/\r?\n/)
-								.map(option => option.trim())
-								.filter(Boolean);
+							let options = splitAndTrim(value, /\r?\n/);
 							if (options.length) definition.options = options;
 							else delete definition.options;
 						}),
@@ -273,7 +275,7 @@ export class VariableEditorModal extends Modal {
 
 	private save(): void {
 		let name = this.name.trim();
-		if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
+		if (!isValidVariableName(name)) {
 			this.errorEl?.setText(
 				'Enter a key that starts with a letter or underscore and contains only letters, numbers, or underscores.',
 			);

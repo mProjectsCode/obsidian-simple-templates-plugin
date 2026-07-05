@@ -1,10 +1,14 @@
+import { FILE_CONFLICT_STRATEGIES, OUTPUT_FOLDER_MODES } from 'packages/core/src/domain/Types';
 import type { NoteOutputDefinition, TemplateDefinition, ValidationIssue, VariableDefinition } from 'packages/core/src/domain/Types';
+import { isValidTemplateId, isValidVariableName } from 'packages/core/src/domain/TemplateNaming';
 import type { TemplateProgram } from 'packages/core/src/domain/TemplateAst';
 import { TemplateProgramParser } from 'packages/core/src/templates/TemplateProgramParser';
 import { TemplateMetadataSchema, VariableDefinitionSchema } from 'packages/core/src/templates/TemplateSchemas';
 import type { SpecialVariableCatalog } from 'packages/core/src/variables/SpecialVariableRegistry';
 import type { z } from 'zod';
 import { InputValueService } from 'packages/core/src/variables/InputValueService';
+import { errorMessage } from 'packages/core/src/domain/Errors';
+import { asRecord } from 'packages/core/src/domain/UnknownValue';
 
 /** Validates raw metadata and compiled template definitions with shared dependencies. */
 export class TemplateValidator {
@@ -18,7 +22,7 @@ export class TemplateValidator {
 	private validateVariableDefinition(name: string, definition: unknown): ValidationIssue[] {
 		let issues: ValidationIssue[] = [];
 
-		if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name))
+		if (!isValidVariableName(name))
 			issues.push({ severity: 'error', path: `variables.${name}`, message: `Variable key "${name}" is invalid.` });
 
 		let validationResult = VariableDefinitionSchema.safeParse(definition);
@@ -39,7 +43,7 @@ export class TemplateValidator {
 				issues.push({
 					severity: 'error',
 					path: `variables.${name}.default`,
-					message: `Default value is invalid: ${error instanceof Error ? error.message : String(error)}`,
+					message: `Default value is invalid: ${errorMessage(error)}`,
 				});
 			}
 		}
@@ -67,8 +71,7 @@ export class TemplateValidator {
 
 	private variableZodIssue(name: string, definition: unknown, issue: z.core.$ZodIssue): ValidationIssue[] {
 		let path = `variables.${name}${issue.path.length ? `.${issue.path.map(String).join('.')}` : ''}`;
-		let fields: object | null = null;
-		if (definition !== null && typeof definition === 'object' && !Array.isArray(definition)) fields = definition;
+		let fields = asRecord(definition);
 
 		let variableType = '';
 		if (fields) variableType = String(Reflect.get(fields, 'type'));
@@ -107,8 +110,9 @@ export class TemplateValidator {
 		if (section === 'variables' && variableName !== undefined) {
 			let variables = data.variables;
 			let definition: unknown;
-			if (variables !== null && typeof variables === 'object') {
-				definition = (variables as Record<string, unknown>)[variableName];
+			let variableDefinitions = asRecord(variables);
+			if (variableDefinitions) {
+				definition = variableDefinitions[variableName];
 			}
 			return this.variableZodIssue(variableName, definition, { ...issue, path: issue.path.slice(2) });
 		}
@@ -139,13 +143,13 @@ export class TemplateValidator {
 
 		let issues: ValidationIssue[] = [];
 		if (output.folder) {
-			if (!['default', 'same-as-active-file', 'path'].includes(output.folder.mode))
+			if (!OUTPUT_FOLDER_MODES.includes(output.folder.mode))
 				issues.push({ severity: 'error', path: 'output.folder.mode', message: 'Output folder mode is invalid.' });
 			if (output.folder.mode === 'path' && typeof output.folder.path !== 'string')
 				issues.push({ severity: 'error', path: 'output.folder.path', message: 'Explicit output folder requires a path.' });
 		}
 
-		if (output.conflict && !['prompt', 'append-number', 'cancel'].includes(output.conflict))
+		if (output.conflict && !FILE_CONFLICT_STRATEGIES.includes(output.conflict))
 			issues.push({ severity: 'error', path: 'output.conflict', message: 'Output conflict strategy is invalid.' });
 
 		return issues;
@@ -157,7 +161,7 @@ export class TemplateValidator {
 
 		// ID and name are mandatory
 		if (!template.id) issues.push({ severity: 'error', path: 'template.id', message: 'Template ID is required.' });
-		else if (!/^[a-zA-Z0-9_-]+$/.test(template.id))
+		else if (!isValidTemplateId(template.id))
 			issues.push({ severity: 'error', path: 'template.id', message: `Template ID "${template.id}" is invalid.` });
 
 		if (!template.name) issues.push({ severity: 'error', path: 'template.name', message: 'Template name is required.' });

@@ -1,4 +1,4 @@
-import { FrontmatterService } from 'packages/core/src/index';
+import { errorMessage, FrontmatterService } from 'packages/core/src/index';
 import type { ValidationIssue } from 'packages/core/src/index';
 import { TemplateMetadataForm } from 'packages/obsidian/src/modals/TemplateMetadataForm';
 import { TemplateMetadataService } from 'packages/obsidian/src/templates/TemplateMetadataService';
@@ -7,6 +7,7 @@ import type { App, TFile } from 'obsidian';
 import { Modal, Notice, SettingGroup } from 'obsidian';
 import { ConfirmModal } from 'packages/obsidian/src/modals/ConfirmModal';
 import type { ObsidianSpecialVariableRegistry } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
+import { addModalActions } from 'packages/obsidian/src/modals/ModalActions';
 
 /**
  * Modal for editing a template's frontmatter metadata (identity, variables,
@@ -84,16 +85,12 @@ export class TemplateMetadataEditorModal extends Modal {
 	}
 
 	private renderActions(): void {
-		new SettingGroup(this.contentEl).addSetting(setting => {
-			setting
-				.addButton(button => button.setButtonText('Cancel').onClick(() => this.close()))
-				.addButton(button =>
-					button
-						.setCta()
-						.setButtonText('Save')
-						.onClick(() => this.save()),
-				);
-		});
+		addModalActions(
+			this.contentEl,
+			'Save',
+			() => this.close(),
+			() => this.save(),
+		);
 	}
 
 	private mergedContent(): string {
@@ -124,7 +121,7 @@ export class TemplateMetadataEditorModal extends Modal {
 				}
 			}
 		} catch (error) {
-			this.validationEl?.setText(error instanceof Error ? error.message : String(error));
+			this.validationEl?.setText(errorMessage(error));
 		}
 	}
 

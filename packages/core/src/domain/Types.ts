@@ -1,26 +1,20 @@
 import type { TemplateAst } from 'packages/core/src/domain/TemplateAst';
 
-/** Determines how a template variable receives its value. */
-export type VariableType = 'input' | 'special' | 'formula';
-
 /** All valid variable types in one array (used for runtime validation). */
-export const VARIABLE_TYPES = ['input', 'special', 'formula'] as const satisfies readonly VariableType[];
+export const VARIABLE_TYPES = ['input', 'special', 'formula'] as const;
 
-/** Controls the editor and coercion used for an input variable. */
-export type VariableInputType = 'text' | 'textarea' | 'number' | 'boolean' | 'date' | 'datetime' | 'select' | 'multiselect' | 'list';
+/** Determines how a template variable receives its value. */
+export type VariableType = (typeof VARIABLE_TYPES)[number];
 
 /** All supported input controls in one array (used for runtime validation). */
-export const VARIABLE_INPUT_TYPES = [
-	'text',
-	'textarea',
-	'number',
-	'boolean',
-	'date',
-	'datetime',
-	'select',
-	'multiselect',
-	'list',
-] as const satisfies readonly VariableInputType[];
+export const VARIABLE_INPUT_TYPES = ['text', 'textarea', 'number', 'boolean', 'date', 'datetime', 'select', 'multiselect', 'list'] as const;
+
+/** Controls the editor and coercion used for an input variable. */
+export type VariableInputType = (typeof VARIABLE_INPUT_TYPES)[number];
+
+export function inputTypeUsesOptions(inputType: VariableInputType): boolean {
+	return inputType === 'select' || inputType === 'multiselect';
+}
 
 interface BaseVariableDefinition {
 	label?: string;
@@ -51,11 +45,17 @@ export interface FormulaVariableDefinition extends BaseVariableDefinition {
 /** Declaration of a single template variable. */
 export type VariableDefinition = InputVariableDefinition | SpecialValueVariableDefinition | FormulaVariableDefinition;
 
+export const OUTPUT_FOLDER_MODES = ['default', 'same-as-active-file', 'path'] as const;
+
+export type OutputFolderMode = (typeof OUTPUT_FOLDER_MODES)[number];
+
 /** Controls where the rendered note is placed. */
-export type OutputFolderDefinition = { mode: 'default' } | { mode: 'same-as-active-file' } | { mode: 'path'; path: string };
+export type OutputFolderDefinition = { mode: Exclude<OutputFolderMode, 'path'> } | { mode: 'path'; path: string };
+
+export const FILE_CONFLICT_STRATEGIES = ['prompt', 'append-number', 'cancel'] as const;
 
 /** Behaviour when the destination path already exists. */
-export type FileConflictStrategy = 'prompt' | 'append-number' | 'cancel';
+export type FileConflictStrategy = (typeof FILE_CONFLICT_STRATEGIES)[number];
 
 /** Output-related configuration for a rendered note. */
 export interface NoteOutputDefinition {

@@ -1,5 +1,6 @@
 import { VariableResolutionError } from 'packages/core/src/domain/Errors';
 import type { InputVariableDefinition } from 'packages/core/src/domain/Types';
+import { splitAndTrim } from 'packages/core/src/domain/SourceText';
 
 /** Owns input coercion and emptiness rules shared by validation and execution. */
 export class InputValueService {
@@ -57,10 +58,7 @@ export class InputValueService {
 		if (Array.isArray(value)) {
 			items = value;
 		} else {
-			items = this.scalar(value, name)
-				.split(/\r?\n|,/)
-				.map(item => item.trim())
-				.filter(Boolean);
+			items = splitAndTrim(this.scalar(value, name), /\r?\n|,/);
 		}
 
 		let hasInvalidOption = items.some(item => !definition.options?.includes(this.scalar(item, name)));

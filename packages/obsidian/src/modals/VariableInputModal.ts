@@ -1,19 +1,19 @@
-import { InputValueService, VariableResolver } from 'packages/core/src/index';
+import { errorMessage, InputValueService, VariableResolver } from 'packages/core/src/index';
 import type { ResolvedVariables, VariableDefinition } from 'packages/core/src/index';
 import type { App } from 'obsidian';
-import { Modal, SettingGroup } from 'obsidian';
+import { SettingGroup } from 'obsidian';
 import type { Setting } from 'obsidian';
+import { addModalActions } from 'packages/obsidian/src/modals/ModalActions';
+import { PromiseModal } from 'packages/obsidian/src/modals/PromiseModal';
 
 /**
  * Modal that collects user-provided values for template variables.
  *
  * Only input variables are shown.
  */
-export class VariableInputModal extends Modal {
+export class VariableInputModal extends PromiseModal<ResolvedVariables | null> {
 	private readonly values: ResolvedVariables = {};
 	private readonly inputNames: string[];
-	private resolve: (values: ResolvedVariables | null) => void = () => undefined;
-	private submitted = false;
 	private errorEl: HTMLElement | null = null;
 	private readonly inputValues = new InputValueService();
 
@@ -30,8 +30,7 @@ export class VariableInputModal extends Modal {
 		private readonly definitions: Record<string, VariableDefinition>,
 		initialValues: ResolvedVariables = {},
 	) {
-		super(app);
-		this.modalEl.addClass('simple-templates-modal');
+		super(app, null);
 		this.inputNames = VariableResolver.needingInput(definitions);
 
 		// Only return values represented by controls in this modal. Seeding hidden
@@ -56,10 +55,7 @@ export class VariableInputModal extends Modal {
 	 */
 	collect(): Promise<ResolvedVariables | null> {
 		if (this.inputNames.length === 0) return Promise.resolve({});
-		return new Promise(resolve => {
-			this.resolve = resolve;
-			this.open();
-		});
+		return this.awaitResult();
 	}
 
 	override onOpen(): void {
@@ -73,16 +69,12 @@ export class VariableInputModal extends Modal {
 
 		this.errorEl = this.contentEl.createDiv({ cls: 'mod-warning' });
 
-		new SettingGroup(this.contentEl).addSetting(setting => {
-			setting
-				.addButton(button => button.setButtonText('Cancel').onClick(() => this.close()))
-				.addButton(button =>
-					button
-						.setCta()
-						.setButtonText('Create note')
-						.onClick(() => this.submit()),
-				);
-		});
+		addModalActions(
+			this.contentEl,
+			'Create note',
+			() => this.close(),
+			() => this.submit(),
+		);
 	}
 
 	/** Renders the appropriate input control for a single variable based on
@@ -152,7 +144,7 @@ export class VariableInputModal extends Modal {
 				this.values[name] = this.inputValues.coerce(name, definition, value);
 				return [];
 			} catch (error) {
-				return [error instanceof Error ? error.message : String(error)];
+				return [errorMessage(error)];
 			}
 		});
 
@@ -161,13 +153,6 @@ export class VariableInputModal extends Modal {
 			return;
 		}
 
-		this.submitted = true;
-		this.resolve(this.values);
-		this.close();
-	}
-
-	override onClose(): void {
-		this.contentEl.empty();
-		if (!this.submitted) this.resolve(null);
+		this.submitResult(this.values);
 	}
 }

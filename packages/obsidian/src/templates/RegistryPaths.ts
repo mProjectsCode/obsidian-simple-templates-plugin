@@ -1,3 +1,7 @@
+import { VaultPathService } from 'packages/core/src/index';
+
+const PATHS = new VaultPathService();
+
 /**
  * Determines whether a set of vault paths could affect the template registry.
  *
@@ -9,7 +13,9 @@
  */
 export function pathAffectsTemplateRegistry(folder: string, paths: string[], markdownFile: boolean): boolean {
 	if (markdownFile) {
-		return paths.some(path => path.toLowerCase().endsWith('.md') && (!folder || path.startsWith(`${folder}/`)));
+		return paths.some(path => path.toLowerCase().endsWith('.md') && PATHS.isInFolder(path, folder));
 	}
-	return paths.some(path => !folder || path === folder || path.startsWith(`${folder}/`) || folder.startsWith(`${path}/`));
+	return paths.some(
+		path => !folder || path === folder || PATHS.isInFolder(path, folder) || (path !== '' && PATHS.isInFolder(folder, path)),
+	);
 }

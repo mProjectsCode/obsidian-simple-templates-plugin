@@ -1,4 +1,5 @@
-import type { VariableDefinition } from 'packages/core/src/index';
+import { FILE_CONFLICT_STRATEGIES, OUTPUT_FOLDER_MODES, splitAndTrim } from 'packages/core/src/index';
+import type { FileConflictStrategy, OutputFolderMode, VariableDefinition } from 'packages/core/src/index';
 import { VariableEditorModal } from 'packages/obsidian/src/modals/VariableEditorModal';
 import type { ObsidianSpecialVariableRegistry } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
 import type { EditableTemplateMetadata } from 'packages/obsidian/src/templates/TemplateMetadataService';
@@ -9,6 +10,18 @@ export interface TemplateMetadataFormCallbacks {
 	render(): void;
 	updatePreview(): void;
 }
+
+const OUTPUT_FOLDER_LABELS: Record<OutputFolderMode, string> = {
+	default: 'Default output folder',
+	'same-as-active-file': 'Same folder as active file',
+	path: 'Explicit path',
+};
+
+const FILE_CONFLICT_LABELS: Record<FileConflictStrategy, string> = {
+	prompt: 'Prompt',
+	'append-number': 'Append number',
+	cancel: 'Cancel',
+};
 
 /** Renders and mutates the editable sections of the template metadata form. */
 export class TemplateMetadataForm {
@@ -51,10 +64,7 @@ export class TemplateMetadataForm {
 				.setDesc('Comma-separated')
 				.addText(text =>
 					text.setValue(this.state.template.tags?.join(', ') ?? '').onChange(value => {
-						let tags = value
-							.split(',')
-							.map(tag => tag.trim())
-							.filter(Boolean);
+						let tags = splitAndTrim(value, ',');
 						if (tags.length) this.state.template.tags = tags;
 						else delete this.state.template.tags;
 						this.callbacks.updatePreview();
@@ -125,21 +135,21 @@ export class TemplateMetadataForm {
 	renderOutput(group: SettingGroup): void {
 		let mode = this.state.output.folder?.mode ?? 'default';
 		group.addSetting(setting => {
-			setting.setName('Folder mode').addDropdown(dropdown =>
-				dropdown
-					.addOption('default', 'Default output folder')
-					.addOption('same-as-active-file', 'Same folder as active file')
-					.addOption('path', 'Explicit path')
-					.setValue(mode)
-					.onChange(value => {
-						if (value === 'path') {
-							this.state.output.folder = { mode: 'path', path: '' };
-						} else {
-							this.state.output.folder = { mode: value as 'default' | 'same-as-active-file' };
-						}
-						this.callbacks.render();
-					}),
-			);
+			setting.setName('Folder mode').addDropdown(dropdown => {
+				for (let option of OUTPUT_FOLDER_MODES) {
+					dropdown.addOption(option, OUTPUT_FOLDER_LABELS[option]);
+				}
+
+				dropdown.setValue(mode).onChange(value => {
+					let selectedMode = value as OutputFolderMode;
+					if (selectedMode === 'path') {
+						this.state.output.folder = { mode: 'path', path: '' };
+					} else {
+						this.state.output.folder = { mode: selectedMode };
+					}
+					this.callbacks.render();
+				});
+			});
 		});
 
 		if (this.state.output.folder?.mode === 'path') {
@@ -164,17 +174,16 @@ export class TemplateMetadataForm {
 			);
 		});
 		group.addSetting(setting => {
-			setting.setName('Conflict strategy').addDropdown(dropdown =>
-				dropdown
-					.addOption('prompt', 'Prompt')
-					.addOption('append-number', 'Append number')
-					.addOption('cancel', 'Cancel')
-					.setValue(this.state.output.conflict ?? 'prompt')
-					.onChange(value => {
-						this.state.output.conflict = value as 'prompt' | 'append-number' | 'cancel';
-						this.callbacks.updatePreview();
-					}),
-			);
+			setting.setName('Conflict strategy').addDropdown(dropdown => {
+				for (let option of FILE_CONFLICT_STRATEGIES) {
+					dropdown.addOption(option, FILE_CONFLICT_LABELS[option]);
+				}
+
+				dropdown.setValue(this.state.output.conflict ?? 'prompt').onChange(value => {
+					this.state.output.conflict = value as FileConflictStrategy;
+					this.callbacks.updatePreview();
+				});
+			});
 		});
 		group.addSetting(setting => {
 			setting.setName('Open after create').addToggle(toggle =>

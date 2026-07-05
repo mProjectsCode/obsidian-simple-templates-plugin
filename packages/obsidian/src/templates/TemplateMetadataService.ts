@@ -1,4 +1,4 @@
-import { FrontmatterService, TemplateParser, VARIABLE_INPUT_TYPES, VARIABLE_TYPES } from 'packages/core/src/index';
+import { asRecord, FrontmatterService, TemplateParser, VARIABLE_INPUT_TYPES, VARIABLE_TYPES } from 'packages/core/src/index';
 import type {
 	NoteOutputDefinition,
 	SpecialVariableCatalog,
@@ -62,9 +62,7 @@ export class TemplateMetadataService {
 	}
 
 	apply(frontmatter: Record<string, unknown>, state: EditableTemplateMetadata): void {
-		frontmatter.template = structuredClone(state.template);
-		frontmatter.variables = structuredClone(state.variables);
-		frontmatter.output = structuredClone(state.output);
+		this.frontmatter.applyTemplateFields(frontmatter, state);
 	}
 
 	validate(
@@ -134,7 +132,6 @@ export class TemplateMetadataService {
 	}
 
 	private object(value: unknown): Record<string, unknown> {
-		if (value === null || typeof value !== 'object' || Array.isArray(value)) return {};
-		return value as Record<string, unknown>;
+		return asRecord(value) ?? {};
 	}
 }

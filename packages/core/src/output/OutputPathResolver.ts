@@ -36,15 +36,12 @@ export class OutputPathResolver {
 
 	resolveFilename(renderedTemplate: string): string {
 		let normalizedFilename = renderedTemplate.trim().replace(/\s+/g, ' ');
-		if (normalizedFilename.includes('/') || normalizedFilename.includes('\\')) {
+		if (this.pathService.hasPathSeparator(normalizedFilename)) {
 			throw new TemplateValidationError('Output filename cannot contain path separators.');
 		}
 
 		let cleanedFilename = [...normalizedFilename]
-			.map(character => {
-				let isUnsupported = character.charCodeAt(0) < 32 || '<>:"|?*'.includes(character);
-				return isUnsupported ? '-' : character;
-			})
+			.map(character => (this.pathService.hasUnsupportedFilenameCharacters(character) ? '-' : character))
 			.join('')
 			.replace(/[. ]+$/g, '')
 			.trim();
@@ -53,7 +50,6 @@ export class OutputPathResolver {
 			throw new TemplateValidationError('Output filename is empty.');
 		}
 
-		if (/\.md$/i.test(cleanedFilename)) return cleanedFilename;
-		return `${cleanedFilename}.md`;
+		return this.pathService.ensureMarkdownExtension(cleanedFilename);
 	}
 }

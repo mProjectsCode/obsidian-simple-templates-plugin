@@ -1,4 +1,4 @@
-import { VARIABLE_INPUT_TYPES } from 'packages/core/src/domain/Types';
+import { inputTypeUsesOptions, VARIABLE_INPUT_TYPES } from 'packages/core/src/domain/Types';
 import type { VariableDefinition } from 'packages/core/src/domain/Types';
 import { z } from 'zod';
 
@@ -17,7 +17,7 @@ const InputVariableSchema = z
 		options: z.array(z.string()).optional(),
 	})
 	.superRefine((definition, context) => {
-		let usesOptions = definition.inputType === 'select' || definition.inputType === 'multiselect';
+		let usesOptions = inputTypeUsesOptions(definition.inputType);
 		if (usesOptions && (!definition.options || definition.options.length === 0))
 			context.addIssue({ code: 'custom', path: ['options'], message: 'requires-options' });
 		if (!usesOptions && definition.options !== undefined)

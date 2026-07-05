@@ -1,4 +1,4 @@
-import { VaultPathService } from 'packages/core/src/index';
+import { asRecord, VaultPathService } from 'packages/core/src/index';
 
 export interface PluginSettings {
 	templateFolderPath: string;
@@ -16,8 +16,7 @@ const PATHS = new VaultPathService();
 
 /** Deserialises raw plugin data, falling back to defaults for missing keys. */
 export function loadPluginSettings(value: unknown): PluginSettings {
-	let loadedSettings: Partial<PluginSettings> = {};
-	if (value !== null && typeof value === 'object') loadedSettings = value;
+	let loadedSettings = asRecord(value) ?? {};
 
 	let showContextMenuItems = DEFAULT_SETTINGS.showContextMenuItems;
 	if (typeof loadedSettings.showContextMenuItems === 'boolean') {
