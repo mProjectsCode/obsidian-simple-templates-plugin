@@ -21,3 +21,5 @@ exampleVault/.obsidian/*
 exampleVault/.obsidian/plugins/*
 exampleVault/.obsidian/plugins/simple-templates/*
 !exampleVault/.obsidian/plugins/simple-templates/.hotreload
+/dist/
+/artifacts/

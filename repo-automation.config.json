@@ -2,5 +2,5 @@
 	"devBranch": "main",
 	"releaseBranch": "release",
 	"github": "https://github.com/mProjectsCode/obsidian-simple-templates-plugin",
-	"preconditions": ["bun run typecheck", "bun run format", "bun run lint:fix", "bun run test"]
+	"preconditions": ["bun run verify"]
 }
