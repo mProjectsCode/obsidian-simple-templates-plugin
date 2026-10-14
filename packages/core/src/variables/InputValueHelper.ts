@@ -1,6 +1,6 @@
 import { VariableResolutionError } from 'packages/core/src/domain/Errors';
-import type { InputVariableDefinition } from 'packages/core/src/domain/Types';
 import { splitAndTrim } from 'packages/core/src/domain/SourceText';
+import type { InputVariableDefinition } from 'packages/core/src/domain/Types';
 
 /** Provides input coercion and emptiness rules shared by validation and execution. */
 export class InputValueHelper {

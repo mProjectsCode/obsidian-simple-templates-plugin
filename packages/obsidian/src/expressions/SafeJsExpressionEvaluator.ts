@@ -1,6 +1,6 @@
 import type { JsonValue, SafeJsCallerApi } from '@lemons_dev/obsidian-safe-js-api';
-import { ExpressionEvaluator, FormulaError } from 'packages/core/src/index';
 import type { ResolvedVariables } from 'packages/core/src/index';
+import { ExpressionEvaluator, FormulaError } from 'packages/core/src/index';
 
 /** Implements core expression evaluation using the Safe JS plugin sandbox. */
 export class SafeJsExpressionEvaluator extends ExpressionEvaluator {

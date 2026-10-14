@@ -1,6 +1,6 @@
-import type SimpleTemplatesPlugin from 'packages/obsidian/src/main';
-import { PluginSettingTab } from 'obsidian';
 import type { SettingDefinitionItem, App } from 'obsidian';
+import { PluginSettingTab } from 'obsidian';
+import type SimpleTemplatesPlugin from 'packages/obsidian/src/main';
 
 export class SimpleTemplatesSettingsTab extends PluginSettingTab {
 	constructor(

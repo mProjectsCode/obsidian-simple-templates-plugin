@@ -11,8 +11,8 @@ import { NoteDestinationResolver } from 'packages/obsidian/src/notes/NoteDestina
 import { ObsidianOutputFolderProvider } from 'packages/obsidian/src/notes/ObsidianOutputFolderProvider';
 import { pathAffectsTemplateRegistry } from 'packages/obsidian/src/templates/RegistryPaths';
 import { TemplateRegistry } from 'packages/obsidian/src/templates/TemplateRegistry';
-import { createObsidianSpecialVariableRegistry, ObsidianVariableEnvironment } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
 import type { SafeJsExecutionResult, SafeJsExpressionOptions } from '@lemons_dev/obsidian-safe-js-api';
+import { createObsidianSpecialVariableRegistry, ObsidianVariableEnvironment } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
 import { DEFAULT_SETTINGS, loadPluginSettings } from 'packages/obsidian/src/settings/PluginSettings';
 import { TemplateCreationHelper } from 'packages/obsidian/src/templates/TemplateCreationHelper';
 import { VaultFolderService } from 'packages/obsidian/src/vault/VaultFolderService';

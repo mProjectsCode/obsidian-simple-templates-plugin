@@ -1,12 +1,12 @@
-import { errorMessage, FrontmatterHelper } from 'packages/core/src/index';
+import type { App, TFile } from 'obsidian';
 import type { ValidationIssue } from 'packages/core/src/index';
+import { errorMessage, FrontmatterHelper } from 'packages/core/src/index';
 import { ConfirmModal } from 'packages/obsidian/src/modals/ConfirmModal';
 import { addModalActions } from 'packages/obsidian/src/modals/ModalActions';
 import { TemplateMetadataForm } from 'packages/obsidian/src/modals/TemplateMetadataForm';
 import type { ObsidianSpecialVariableRegistry } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
-import { TemplateMetadataHelper } from 'packages/obsidian/src/templates/TemplateMetadataHelper';
 import type { EditableTemplateMetadata } from 'packages/obsidian/src/templates/TemplateMetadataHelper';
-import type { App, TFile } from 'obsidian';
+import { TemplateMetadataHelper } from 'packages/obsidian/src/templates/TemplateMetadataHelper';
 import { Modal, Notice, SettingGroup } from 'obsidian';
 
 /**

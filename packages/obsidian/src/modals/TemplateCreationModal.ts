@@ -1,9 +1,9 @@
+import type { App } from 'obsidian';
 import { errorMessage } from 'packages/core/src/index';
 import { addModalActions } from 'packages/obsidian/src/modals/ModalActions';
 import { PromiseModal } from 'packages/obsidian/src/modals/PromiseModal';
-import { TemplateCreationHelper } from 'packages/obsidian/src/templates/TemplateCreationHelper';
 import type { TemplateCreationRequest } from 'packages/obsidian/src/templates/TemplateCreationHelper';
-import type { App } from 'obsidian';
+import { TemplateCreationHelper } from 'packages/obsidian/src/templates/TemplateCreationHelper';
 import { SettingGroup } from 'obsidian';
 
 /** Collects the identity and filename for a new template file. */

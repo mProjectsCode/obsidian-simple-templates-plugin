@@ -1,5 +1,5 @@
-import { P, P_HELPERS, P_UTILS } from '@lemons_dev/parsinom';
 import type { Parser, ParsingRange } from '@lemons_dev/parsinom';
+import { P, P_HELPERS, P_UTILS } from '@lemons_dev/parsinom';
 import { TemplateParseError } from 'packages/core/src/domain/Errors';
 import type {
 	ExpressionNode,

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import type { OutputFolderProvider, ResolvedVariables, TemplateDefinition, VariableDefinition } from 'packages/core/src/index';
 import {
 	ExpressionEvaluator,
 	FormulaError,
@@ -14,7 +15,6 @@ import {
 	VariableResolver,
 	SpecialVariableRegistry,
 } from 'packages/core/src/index';
-import type { OutputFolderProvider, ResolvedVariables, TemplateDefinition, VariableDefinition } from 'packages/core/src/index';
 
 interface TestVariableEnvironment {
 	activeFilePath?: string;
@@ -88,8 +88,9 @@ class MockExpressionEvaluator extends ExpressionEvaluator {
 			default:
 				if (/^[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*$/.test(expression)) {
 					let value: unknown = values;
-					for (let part of expression.split('.'))
+					for (let part of expression.split('.')) {
 						value = value !== null && typeof value === 'object' ? (value as Record<string, unknown>)[part] : undefined;
+					}
 					return value;
 				}
 				throw new FormulaError(`Unknown test expression: ${expression}`);
@@ -98,7 +99,9 @@ class MockExpressionEvaluator extends ExpressionEvaluator {
 
 	private stringInput(inputs: ResolvedVariables, name: string): string {
 		let value = inputs[name];
-		if (typeof value !== 'string') throw new Error(`Expected string input: ${name}`);
+		if (typeof value !== 'string') {
+			throw new Error(`Expected string input: ${name}`);
+		}
 		return value;
 	}
 }

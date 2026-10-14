@@ -1,5 +1,5 @@
-import type { TemplateDefinition } from 'packages/core/src/index';
 import type { App } from 'obsidian';
+import type { TemplateDefinition } from 'packages/core/src/index';
 import { PromiseSuggestModal } from 'packages/obsidian/src/modals/PromiseSuggestModal';
 
 /**

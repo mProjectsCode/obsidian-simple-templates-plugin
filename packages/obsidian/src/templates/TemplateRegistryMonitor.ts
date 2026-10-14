@@ -1,7 +1,7 @@
+import type { Plugin, TAbstractFile } from 'obsidian';
 import { VaultPathHelper } from 'packages/core/src/index';
 import { pathAffectsTemplateRegistry } from 'packages/obsidian/src/templates/RegistryPaths';
 import type { TemplateRegistry } from 'packages/obsidian/src/templates/TemplateRegistry';
-import type { Plugin, TAbstractFile } from 'obsidian';
 import { TFile, debounce } from 'obsidian';
 
 /** Registers and filters vault events that can invalidate the template registry. */

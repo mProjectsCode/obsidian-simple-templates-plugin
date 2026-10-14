@@ -1,5 +1,5 @@
-import type { OutputFolderProvider } from 'packages/core/src/index';
 import type { App } from 'obsidian';
+import type { OutputFolderProvider } from 'packages/core/src/index';
 
 /** Supplies Obsidian-specific folder values to the core template engine. */
 export class ObsidianOutputFolderProvider implements OutputFolderProvider {

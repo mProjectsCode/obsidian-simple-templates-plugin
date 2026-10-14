@@ -1,6 +1,6 @@
-import type { TemplateValidationResult } from 'packages/obsidian/src/templates/TemplateRegistry';
 import type { App } from 'obsidian';
 import { Modal, SettingGroup, TFile } from 'obsidian';
+import type { TemplateValidationResult } from 'packages/obsidian/src/templates/TemplateRegistry';
 
 /** Displays actionable template validation errors without requiring a developer console. */
 export class TemplateValidationModal extends Modal {

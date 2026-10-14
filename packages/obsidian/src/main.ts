@@ -1,7 +1,7 @@
 import { NoteTemplateExecutor } from 'packages/obsidian/src/notes/NoteTemplateExecutor';
 import { createObsidianSpecialVariableRegistry } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
-import { DEFAULT_SETTINGS, loadPluginSettings } from 'packages/obsidian/src/settings/PluginSettings';
 import type { PluginSettings } from 'packages/obsidian/src/settings/PluginSettings';
+import { DEFAULT_SETTINGS, loadPluginSettings } from 'packages/obsidian/src/settings/PluginSettings';
 import { SimpleTemplatesSettingsTab } from 'packages/obsidian/src/settings/SettingsTab';
 import { TemplateManagementController } from 'packages/obsidian/src/templates/TemplateManagementController';
 import { TemplateRegistry } from 'packages/obsidian/src/templates/TemplateRegistry';

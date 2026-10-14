@@ -1,3 +1,4 @@
+import type { App, TFile } from 'obsidian';
 import { errorMessage, FrontmatterHelper, VaultPathHelper } from 'packages/core/src/index';
 import { ConfirmModal } from 'packages/obsidian/src/modals/ConfirmModal';
 import { FilePickerModal } from 'packages/obsidian/src/modals/FilePickerModal';
@@ -8,7 +9,6 @@ import type { ObsidianSpecialVariableRegistry } from 'packages/obsidian/src/note
 import type { PluginSettings } from 'packages/obsidian/src/settings/PluginSettings';
 import type { TemplateRegistry } from 'packages/obsidian/src/templates/TemplateRegistry';
 import { VaultFolderService } from 'packages/obsidian/src/vault/VaultFolderService';
-import type { App, TFile } from 'obsidian';
 import { Notice, normalizePath } from 'obsidian';
 
 export interface TemplateManagementDependencies {

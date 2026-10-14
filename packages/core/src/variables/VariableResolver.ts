@@ -1,8 +1,8 @@
 import { errorMessage, FormulaError, MissingRequiredVariableError, VariableResolutionError } from 'packages/core/src/domain/Errors';
 import type { ResolvedVariables, VariableDefinition } from 'packages/core/src/domain/Types';
 import type { ExpressionEvaluator } from 'packages/core/src/expressions/ExpressionEvaluator';
-import type { SpecialVariableRegistry } from 'packages/core/src/variables/SpecialVariableRegistry';
 import { InputValueHelper } from 'packages/core/src/variables/InputValueHelper';
+import type { SpecialVariableRegistry } from 'packages/core/src/variables/SpecialVariableRegistry';
 
 /**
  * Resolves template variables through special sources, user input, Safe JS expressions,

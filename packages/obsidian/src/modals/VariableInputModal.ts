@@ -1,8 +1,8 @@
 import { errorMessage, InputValueHelper, VariableResolver } from 'packages/core/src/index';
-import type { ResolvedVariables, VariableDefinition } from 'packages/core/src/index';
 import type { App } from 'obsidian';
-import { SettingGroup } from 'obsidian';
 import type { Setting } from 'obsidian';
+import { SettingGroup } from 'obsidian';
+import type { ResolvedVariables, VariableDefinition } from 'packages/core/src/index';
 import { addModalActions } from 'packages/obsidian/src/modals/ModalActions';
 import { PromiseModal } from 'packages/obsidian/src/modals/PromiseModal';
 

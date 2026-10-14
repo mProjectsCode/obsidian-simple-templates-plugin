@@ -1,4 +1,3 @@
-import { asRecord, FrontmatterHelper, TemplateParser, VARIABLE_INPUT_TYPES, VARIABLE_TYPES } from 'packages/core/src/index';
 import type {
 	NoteOutputDefinition,
 	SpecialVariableCatalog,
@@ -7,6 +6,7 @@ import type {
 	VariableInputType,
 	VariableType,
 } from 'packages/core/src/index';
+import { asRecord, FrontmatterHelper, TemplateParser, VARIABLE_INPUT_TYPES, VARIABLE_TYPES } from 'packages/core/src/index';
 
 /** In-memory representation of the template frontmatter fields owned by this plugin. */
 export interface EditableTemplateMetadata {

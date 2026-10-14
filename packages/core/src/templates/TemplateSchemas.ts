@@ -1,5 +1,5 @@
-import { inputTypeUsesOptions, VARIABLE_INPUT_TYPES } from 'packages/core/src/domain/Types';
 import type { VariableDefinition } from 'packages/core/src/domain/Types';
+import { inputTypeUsesOptions, VARIABLE_INPUT_TYPES } from 'packages/core/src/domain/Types';
 import { z } from 'zod';
 
 const BaseVariableShape = {

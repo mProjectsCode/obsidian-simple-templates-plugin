@@ -1,3 +1,5 @@
+import type { App } from 'obsidian';
+import type { VariableDefinition, VariableInputType, VariableType } from 'packages/core/src/index';
 import {
 	FrontmatterHelper,
 	inputTypeUsesOptions,
@@ -7,10 +9,8 @@ import {
 	VARIABLE_INPUT_TYPES,
 	VARIABLE_TYPES,
 } from 'packages/core/src/index';
-import type { VariableDefinition, VariableInputType, VariableType } from 'packages/core/src/index';
 import { addModalActions } from 'packages/obsidian/src/modals/ModalActions';
 import type { ObsidianSpecialVariableRegistry } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
-import type { App } from 'obsidian';
 import { Modal, SettingGroup } from 'obsidian';
 import { parse } from 'yaml';
 

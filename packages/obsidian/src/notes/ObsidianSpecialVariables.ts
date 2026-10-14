@@ -1,5 +1,5 @@
-import { SpecialVariableRegistry } from 'packages/core/src/index';
 import type { App, TFile } from 'obsidian';
+import { SpecialVariableRegistry } from 'packages/core/src/index';
 
 /** Execution-scoped, lazily loaded values available to Obsidian special variables. */
 export class ObsidianVariableEnvironment {

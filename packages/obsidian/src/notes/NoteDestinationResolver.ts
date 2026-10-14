@@ -1,7 +1,7 @@
-import { FileConflictError, VaultPathHelper } from 'packages/core/src/index';
-import type { FileConflictStrategy } from 'packages/core/src/index';
-import { ConfirmModal } from 'packages/obsidian/src/modals/ConfirmModal';
 import type { App } from 'obsidian';
+import type { FileConflictStrategy } from 'packages/core/src/index';
+import { FileConflictError, VaultPathHelper } from 'packages/core/src/index';
+import { ConfirmModal } from 'packages/obsidian/src/modals/ConfirmModal';
 
 /** Resolves an available vault path, including user-driven conflict handling. */
 export class NoteDestinationResolver {

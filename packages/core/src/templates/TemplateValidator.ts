@@ -1,14 +1,14 @@
-import type { z } from 'zod';
 import { errorMessage } from 'packages/core/src/domain/Errors';
 import type { TemplateProgram } from 'packages/core/src/domain/TemplateAst';
 import { isValidTemplateId, isValidVariableName } from 'packages/core/src/domain/TemplateNaming';
-import { FILE_CONFLICT_STRATEGIES, OUTPUT_FOLDER_MODES } from 'packages/core/src/domain/Types';
 import type { NoteOutputDefinition, TemplateDefinition, ValidationIssue, VariableDefinition } from 'packages/core/src/domain/Types';
+import { FILE_CONFLICT_STRATEGIES, OUTPUT_FOLDER_MODES } from 'packages/core/src/domain/Types';
 import { asRecord } from 'packages/core/src/domain/UnknownValue';
 import { TemplateProgramParser } from 'packages/core/src/templates/TemplateProgramParser';
 import { TemplateMetadataSchema, VariableDefinitionSchema } from 'packages/core/src/templates/TemplateSchemas';
 import { InputValueHelper } from 'packages/core/src/variables/InputValueHelper';
 import type { SpecialVariableCatalog } from 'packages/core/src/variables/SpecialVariableRegistry';
+import type { z } from 'zod';
 
 /** Validates raw metadata and compiled template definitions with shared dependencies. */
 export class TemplateValidator {
