@@ -1,5 +1,4 @@
 import { errorMessage, TemplateParseError } from 'packages/core/src/domain/Errors';
-import { asRecord } from 'packages/core/src/domain/UnknownValue';
 import { readSourceLines, withoutTrailingLineBreak } from 'packages/core/src/domain/SourceText';
 import type {
 	NoteOutputDefinition,
@@ -9,6 +8,7 @@ import type {
 	ValidationIssue,
 	VariableDefinition,
 } from 'packages/core/src/domain/Types';
+import { asRecord } from 'packages/core/src/domain/UnknownValue';
 import { FrontmatterHelper } from 'packages/core/src/frontmatter/FrontmatterHelper';
 import { TemplateCompiler } from 'packages/core/src/templates/TemplateCompiler';
 import { TemplateValidator } from 'packages/core/src/templates/TemplateValidator';
