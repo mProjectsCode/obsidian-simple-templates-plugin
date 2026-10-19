@@ -1,10 +1,10 @@
 import type { App } from 'obsidian';
+import { SettingGroup } from 'obsidian';
 import type { FileConflictStrategy, OutputFolderMode, VariableDefinition } from 'packages/core/src/index';
 import { FILE_CONFLICT_STRATEGIES, OUTPUT_FOLDER_MODES, splitAndTrim } from 'packages/core/src/index';
 import { VariableEditorModal } from 'packages/obsidian/src/modals/VariableEditorModal';
 import type { ObsidianSpecialVariableRegistry } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
 import type { EditableTemplateMetadata } from 'packages/obsidian/src/templates/TemplateMetadataHelper';
-import { SettingGroup } from 'obsidian';
 
 export interface TemplateMetadataFormCallbacks {
 	render(): void;

@@ -1,10 +1,10 @@
 import type { App } from 'obsidian';
+import { SettingGroup } from 'obsidian';
 import { errorMessage } from 'packages/core/src/index';
 import { addModalActions } from 'packages/obsidian/src/modals/ModalActions';
 import { PromiseModal } from 'packages/obsidian/src/modals/PromiseModal';
 import type { TemplateCreationRequest } from 'packages/obsidian/src/templates/TemplateCreationHelper';
 import { TemplateCreationHelper } from 'packages/obsidian/src/templates/TemplateCreationHelper';
-import { SettingGroup } from 'obsidian';
 
 /** Collects the identity and filename for a new template file. */
 export class TemplateCreationModal extends PromiseModal<TemplateCreationRequest | null> {

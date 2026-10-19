@@ -1,3 +1,4 @@
+import { Notice, Plugin } from 'obsidian';
 import { NoteTemplateExecutor } from 'packages/obsidian/src/notes/NoteTemplateExecutor';
 import { createObsidianSpecialVariableRegistry } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
 import type { PluginSettings } from 'packages/obsidian/src/settings/PluginSettings';
@@ -7,7 +8,6 @@ import { TemplateManagementController } from 'packages/obsidian/src/templates/Te
 import { TemplateRegistry } from 'packages/obsidian/src/templates/TemplateRegistry';
 import { TemplateRegistryMonitor } from 'packages/obsidian/src/templates/TemplateRegistryMonitor';
 import 'packages/obsidian/src/styles.css';
-import { Notice, Plugin } from 'obsidian';
 
 export default class SimpleTemplatesPlugin extends Plugin {
 	settings: PluginSettings = structuredClone(DEFAULT_SETTINGS);

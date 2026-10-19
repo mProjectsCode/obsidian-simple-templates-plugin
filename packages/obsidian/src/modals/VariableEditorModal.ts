@@ -1,4 +1,5 @@
 import type { App } from 'obsidian';
+import { Modal, SettingGroup } from 'obsidian';
 import type { VariableDefinition, VariableInputType, VariableType } from 'packages/core/src/index';
 import {
 	FrontmatterHelper,
@@ -11,7 +12,6 @@ import {
 } from 'packages/core/src/index';
 import { addModalActions } from 'packages/obsidian/src/modals/ModalActions';
 import type { ObsidianSpecialVariableRegistry } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
-import { Modal, SettingGroup } from 'obsidian';
 import { parse } from 'yaml';
 
 /** Edits one template variable in isolation and commits it when saved. */

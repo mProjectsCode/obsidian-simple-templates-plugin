@@ -1,19 +1,19 @@
 import { getSafeJsApi } from '@lemons_dev/obsidian-safe-js-api';
 import type { Plugin } from 'obsidian';
+import { Notice } from 'obsidian';
 import type { TemplateDefinition } from 'packages/core/src/index';
 import { errorMessage, TemplateEngine } from 'packages/core/src/index';
 import { SafeJsExpressionEvaluator } from 'packages/obsidian/src/expressions/SafeJsExpressionEvaluator';
 import { ConfirmModal } from 'packages/obsidian/src/modals/ConfirmModal';
 import { TemplatePickerModal } from 'packages/obsidian/src/modals/TemplatePickerModal';
 import { VariableInputModal } from 'packages/obsidian/src/modals/VariableInputModal';
-import type { ObsidianSpecialVariableRegistry } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
-import { ObsidianVariableEnvironment } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
 import { NoteDestinationResolver } from 'packages/obsidian/src/notes/NoteDestinationResolver';
 import { ObsidianOutputFolderProvider } from 'packages/obsidian/src/notes/ObsidianOutputFolderProvider';
+import type { ObsidianSpecialVariableRegistry } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
+import { ObsidianVariableEnvironment } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
 import type { PluginSettings } from 'packages/obsidian/src/settings/PluginSettings';
 import type { TemplateRegistry } from 'packages/obsidian/src/templates/TemplateRegistry';
 import { VaultFolderService } from 'packages/obsidian/src/vault/VaultFolderService';
-import { Notice } from 'obsidian';
 
 export interface NoteTemplateExecutorDependencies {
 	plugin: Plugin;

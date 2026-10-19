@@ -1,8 +1,8 @@
-import { parse, parseDocument, stringify } from 'yaml';
 import { errorMessage, FrontmatterEditError, TemplateParseError } from 'packages/core/src/domain/Errors';
 import type { SourceLine } from 'packages/core/src/domain/SourceText';
 import { readSourceLine } from 'packages/core/src/domain/SourceText';
 import { asRecord } from 'packages/core/src/domain/UnknownValue';
+import { parse, parseDocument, stringify } from 'yaml';
 
 export interface FrontmatterDocument {
 	raw: string | null;

@@ -1,7 +1,7 @@
 import type { Vault } from 'obsidian';
+import { TFile } from 'obsidian';
 import type { SpecialVariableCatalog, TemplateDefinition, ValidationIssue } from 'packages/core/src/index';
 import { errorMessage, TemplateParser, VaultPathHelper } from 'packages/core/src/index';
-import { TFile } from 'obsidian';
 
 /** Stores the result of parsing a single template file. */
 export interface TemplateValidationResult {

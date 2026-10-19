@@ -1,4 +1,5 @@
 import type { App, TFile } from 'obsidian';
+import { Modal, Notice, SettingGroup } from 'obsidian';
 import type { ValidationIssue } from 'packages/core/src/index';
 import { errorMessage, FrontmatterHelper } from 'packages/core/src/index';
 import { ConfirmModal } from 'packages/obsidian/src/modals/ConfirmModal';
@@ -7,7 +8,6 @@ import { TemplateMetadataForm } from 'packages/obsidian/src/modals/TemplateMetad
 import type { ObsidianSpecialVariableRegistry } from 'packages/obsidian/src/notes/ObsidianSpecialVariables';
 import type { EditableTemplateMetadata } from 'packages/obsidian/src/templates/TemplateMetadataHelper';
 import { TemplateMetadataHelper } from 'packages/obsidian/src/templates/TemplateMetadataHelper';
-import { Modal, Notice, SettingGroup } from 'obsidian';
 
 /**
  * Modal for editing a template's frontmatter metadata (identity, variables,
